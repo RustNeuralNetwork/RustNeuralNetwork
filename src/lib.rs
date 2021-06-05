@@ -1,17 +1,16 @@
-//! RustNeuralNetwork is Neural Network library that supports multi-layer full connected neural network 
+//! RustNeuralNetwork is Neural Network library that supports multi-layer full connected neural network
 //! for applying machine learning to simple classification problems.
 //!
 
-
-// Vinodh Kotipalli & Shay Green 2021
+// Shay Green & Vinodh Kotipalli 2021
 
 // Workaround for Clippy false positive in Rust 1.51.0.
 // https://github.com/rust-lang/rust-clippy/issues/6546
 #![allow(clippy::result_unit_err)]
 
-use ndarray::*;
 use csv::*;
 use image::*;
+use ndarray::*;
 use thiserror::Error;
 
 /// Errors during Model interaction.
@@ -26,11 +25,41 @@ pub enum ModelError<'a> {
 /// Result type for Model Errors errors.
 pub type Result<'a, T> = std::result::Result<T, ModelError<'a>>;
 
+/// Different types of activation funtions supported by a NN Layer
+#[derive(Debug, Clone)]
+pub enum Activation<'a> {
+    /// Sigmoid Activation function
+    Sigmoid {},
+
+    /// Tanh Activation function
+    Tanh {},
+
+    /// Relu Activation function
+    ReLu {},
+
+    /// SoftMax Activation function
+    SoftMax {},
+}
+
+/// Different types of loss functions supported by a NN Model
+#[derive(Debug, Clone)]
+pub enum Loss<'a> {
+    /// Mean Square Error loss function
+    MeanSquareError {},
+
+    /// Entropy loss function
+    Entropy {},
+}
+
 /// Different types of Layers to construct a Neural Network
 #[derive(Debug, Clone)]
 pub enum Layer<'a> {
     /// Regular densely-connected Neural Network Layer
-    Dense {activation: &'a str, input_dim : &'a i32, output_dim : &'a i32 },
+    Dense {
+        activation: &'a str,
+        input_dim: &'a i32,
+        output_dim: &'a i32,
+    },
 }
 
 /// Groups a linear stack of layers into a Model
@@ -47,7 +76,6 @@ pub struct Model<'a> {
     pub inputs: Layer<'a>,
     pub outputs: Layer<'a>,
 }
-
 
 #[cfg(test)]
 mod tests {
