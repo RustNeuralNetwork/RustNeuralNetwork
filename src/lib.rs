@@ -10,7 +10,7 @@
 
 use csv::*;
 use image::*;
-use ndarray::{Array1, Array2, ArrayBase, Axis, Data, Ix1, Ix2};
+use ndarray::{Array1, Array2};
 use plotters::prelude::*;
 
 use std::collections::HashMap;
@@ -36,55 +36,49 @@ pub type Result<'a, T> = std::result::Result<T, ModelError<'a>>;
 
 /// Different types of activation functions supported by a NN Layer
 #[derive(Clone)]
-pub enum Activation<'a, S: ndarray::Data, D: ndarray::Dimension> {
+pub enum Activation<'a> {
     /// Sigmoid Activation function
-    Sigmoid { result: &'a ArrayBase<S, D> },
+    Sigmoid { name: &'a str },
 
     /// Tanh Activation function
-    Tanh { result: &'a ArrayBase<S, D> },
+    Tanh { name: &'a str },
 
     /// Relu Activation function
     ReLu {
-        result: &'a ArrayBase<S, D>,
+        name: &'a str,
         alpha: &'a f32,
         max_value: &'a f32,
         threshold: &'a f32,
     },
 
     /// SoftMax Activation function
-    SoftMax {
-        result: &'a ArrayBase<S, D>,
-        axis: &'a u32,
-    },
+    SoftMax { axis: &'a u32 },
 }
 
-trait ActivationFunction<'a, S: ndarray::Data, D: ndarray::Dimension> {
+trait ActivationFunction<'a> {
     fn default(&'a mut self) -> Result<()>;
 
-    fn calculate<Si: ndarray::Data, Di: ndarray::Dimension>(
-        &'a mut self,
-        x: &'a ArrayBase<Si, Di>,
-    ) -> Result<ArrayBase<S, D>>;
+    fn calculate(&'a mut self, inputs: &'a Array2<f32>) -> Result<Array2<f32>>;
 }
 
 /// Different types of loss functions supported by a NN Model
 #[derive(Clone)]
 pub enum Loss<'a> {
     /// Mean Square Error loss function
-    MeanSquareError { result: &'a f32 },
+    MeanSquareError { name: &'a str },
 
     /// Entropy loss function
-    Entropy { result: &'a f32 },
+    Entropy { name: &'a str },
 }
 
-trait LossFunction<'a, S: ndarray::Data, D: ndarray::Dimension> {
+trait LossFunction<'a> {
     fn default(&'a mut self) -> Result<()>;
 
     fn calculate<L>(
         &'a mut self,
-        y_true: &'a Array1<L>,
-        y_pred: &'a Array1<L>,
-    ) -> Result<ArrayBase<S, D>>;
+        y_true: &'a Array2<L>,
+        y_pred: &'a Array2<L>,
+    ) -> Result<Array1<f32>>;
 }
 
 /// Different types of Layers to construct a Neural Network
@@ -96,6 +90,7 @@ pub enum Layer<'a> {
         input_dim: &'a u32,
         output_dim: &'a u32,
         weights: &'a Array2<f32>,
+        loss: &'a Array1<f32>,
     },
 }
 
@@ -105,6 +100,10 @@ trait ConfigureLayer<'a> {
     fn get_weights(&'a self) -> Result<Array2<f32>>;
 
     fn set_weights(&'a mut self, weights: &'a Array2<f32>) -> Result<()>;
+
+    fn forward_propagate(&'a self, inputs: &'a Array2<f32>) -> Result<Array2<f32>>;
+
+    fn back_propagate(&'a self, inputs: &'a Array2<f32>, errors: &'a Array2<f32>) -> Result<()>;
 }
 
 /// Different types of Optimizers functions
@@ -159,29 +158,13 @@ pub struct Model<'a> {
 }
 
 trait UseModel<'a> {
-    fn fit<S: ndarray::Data, D: ndarray::Dimension, L>(
-        &'a mut self,
-        inputs: &'a ArrayBase<S, D>,
-        target: Array1<L>,
-    ) -> Result<()>;
+    fn fit<L>(&'a mut self, inputs: &'a Array2<f32>, target: Array1<L>) -> Result<()>;
 
-    fn predict<S: ndarray::Data, D: ndarray::Dimension, L>(
-        &'a self,
-        inputs: &'a ArrayBase<S, D>,
-        target: Array1<L>,
-    ) -> Result<Array1<L>>;
+    fn predict<L>(&'a self, inputs: &'a Array2<f32>, target: Array1<L>) -> Result<Array1<L>>;
 
-    fn mse<S: ndarray::Data, D: ndarray::Dimension, L>(
-        &'a self,
-        inputs: &'a ArrayBase<S, D>,
-        target: Array1<L>,
-    ) -> Result<f32>;
+    fn mse<L>(&'a self, inputs: &'a Array2<f32>, target: Array1<L>) -> Result<f32>;
 
-    fn entropy<S: ndarray::Data, D: ndarray::Dimension, L>(
-        &'a self,
-        inputs: &'a ArrayBase<S, D>,
-        target: Array1<L>,
-    ) -> Result<f32>;
+    fn entropy<L>(&'a self, inputs: &'a Array2<f32>, target: Array1<L>) -> Result<f32>;
 
     fn mse_plot(&'a self) -> Result<()>;
 

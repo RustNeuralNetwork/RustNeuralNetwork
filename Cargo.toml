@@ -1,5 +1,5 @@
 [package]
-name = "RustNeuralNetwork"
+name = "rust_neural_network"
 version = "0.1.0"
 authors = ["Shay Green <shagreen@pdx.edu>"]
 edition = "2018"
