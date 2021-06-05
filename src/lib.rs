@@ -7,10 +7,10 @@
 // Workaround for Clippy false positive in Rust 1.51.0.
 // https://github.com/rust-lang/rust-clippy/issues/6546
 #![allow(clippy::result_unit_err)]
-
+#![allow(non_snake_case)]
 use csv::*;
 use image::*;
-use ndarray::*;
+use ndarray::{Array1, Array2, ArrayBase, Axis, Data, Ix1, Ix2};
 use thiserror::Error;
 
 /// Errors during Model interaction.
@@ -26,29 +26,43 @@ pub enum ModelError<'a> {
 pub type Result<'a, T> = std::result::Result<T, ModelError<'a>>;
 
 /// Different types of activation funtions supported by a NN Layer
-#[derive(Debug, Clone)]
-pub enum Activation<'a> {
+#[derive(Clone)]
+pub enum Activation<'a, S: ndarray::Data, D: ndarray::Dimension> {
     /// Sigmoid Activation function
-    Sigmoid {},
+    Sigmoid { x: &'a ArrayBase<S, D> },
 
     /// Tanh Activation function
-    Tanh {},
+    Tanh { x: &'a ArrayBase<S, D> },
 
     /// Relu Activation function
-    ReLu {},
+    ReLu {
+        x: &'a ArrayBase<S, D>,
+        alpha: &'a f32,
+        max_value: &'a f32,
+        threshold: &'a f32,
+    },
 
     /// SoftMax Activation function
-    SoftMax {},
+    SoftMax {
+        x: &'a ArrayBase<S, D>,
+        axis: &'a u32,
+    },
 }
 
 /// Different types of loss functions supported by a NN Model
-#[derive(Debug, Clone)]
-pub enum Loss<'a> {
+#[derive(Clone)]
+pub enum Loss<'a, S: ndarray::Data, D: ndarray::Dimension> {
     /// Mean Square Error loss function
-    MeanSquareError {},
+    MeanSquareError {
+        y_true: &'a ArrayBase<S, D>,
+        y_pred: &'a ArrayBase<S, D>,
+    },
 
     /// Entropy loss function
-    Entropy {},
+    Entropy {
+        y_true: &'a ArrayBase<S, D>,
+        y_pred: &'a ArrayBase<S, D>,
+    },
 }
 
 /// Different types of Layers to construct a Neural Network
@@ -57,8 +71,8 @@ pub enum Layer<'a> {
     /// Regular densely-connected Neural Network Layer
     Dense {
         activation: &'a str,
-        input_dim: &'a i32,
-        output_dim: &'a i32,
+        input_dim: &'a u32,
+        output_dim: &'a u32,
     },
 }
 
