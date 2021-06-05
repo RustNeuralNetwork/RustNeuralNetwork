@@ -8,9 +8,10 @@
 // https://github.com/rust-lang/rust-clippy/issues/6546
 #![allow(clippy::result_unit_err)]
 
+use ndarray::prelude::*;
+
 use csv::*;
 use image::*;
-use ndarray::{Array1, Array2};
 use plotters::prelude::*;
 
 use std::collections::HashMap;
@@ -39,7 +40,7 @@ pub type Result<'a, T> = std::result::Result<T, ModelError<'a>>;
 
 /// Different types of activation functions supported by a NN Layer
 #[derive(Clone)]
-pub enum Activation<'a> {
+pub enum Activation {
     /// Sigmoid Activation function
     Sigmoid,
 
@@ -48,34 +49,32 @@ pub enum Activation<'a> {
 
     /// Relu Activation function
     ReLu {
-        alpha: &'a f32,
-        max_value: &'a f32,
-        threshold: &'a f32,
+        alpha: f32,
+        max_value: f32,
+        threshold: f32,
     },
 
     /// SoftMax Activation function
-    SoftMax { axis: &'a u32 },
+    SoftMax { axis: u32 },
 }
 
 trait ActivationInterface<'a> {
     fn calculate(&'a self, inputs: &'a Array2<f32>) -> Result<Array2<f32>>;
 }
 
-impl<'a> ActivationInterface<'a> for Activation<'a> {
+impl<'a> ActivationInterface<'a> for Activation {
     fn calculate(&'a self, inputs: &'a Array2<f32>) -> Result<Array2<f32>> {
         match self {
-            Activation::Sigmoid => Ok(inputs.to_owned()),
-            Activation::Tanh => Ok(inputs.to_owned()),
+            Activation::Sigmoid => Ok(inputs.mapv(|x| (1.0 / (1.0 + x.exp())))),
+            Activation::Tanh => Ok(inputs.mapv(|x| x.tanh())),
             Activation::ReLu {
                 alpha,
                 max_value,
                 threshold,
-            } => {
-                println!("{}", alpha);
-                println!("{}", max_value);
-                println!("{}", threshold);
-                Ok(inputs.to_owned())
-            }
+            } =>  { 
+                let  result = inputs.map(|x| if *x > *threshold { *x } else {*alpha * *x});
+                Ok(result.map(|x| if *x < *max_value { *x } else { *max_value })) 
+            } 
             Activation::SoftMax { axis } => {
                 println!("{}", axis);
                 Ok(inputs.to_owned())
@@ -86,12 +85,12 @@ impl<'a> ActivationInterface<'a> for Activation<'a> {
 
 /// Different types of loss functions supported by a NN Model
 #[derive(Clone)]
-pub enum Loss<'a> {
+pub enum Loss {
     /// Mean Square Error loss function
-    MeanSquareError { name: &'a str },
+    MeanSquareError,
 
     /// Entropy loss function
-    Entropy { name: &'a str },
+    Entropy,
 }
 
 trait LossFunction<'a> {
