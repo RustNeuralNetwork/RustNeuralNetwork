@@ -120,6 +120,11 @@ pub enum Optimizer<'a> {
     },
 }
 
+trait OptimizerFunction<'a> {
+    fn default(&'a mut self)-> Result<()>;
+    fn get_params(&'a self) ->Result<Vec<&'a f64>>;
+} 
+
 /// Groups a linear stack of layers into a Model
 #[derive(Debug, Clone)]
 pub struct Model<'a> {
