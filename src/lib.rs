@@ -29,6 +29,9 @@ pub enum ModelError<'a> {
 
     #[error("{0}: Input value outside expected range")]
     ValueRangeError(&'a str),
+
+    #[error("{0}: Activation Function not implemented")]
+    ActivationError(&'a str),
 }
 
 /// Result type for Model Errors errors.
@@ -38,14 +41,13 @@ pub type Result<'a, T> = std::result::Result<T, ModelError<'a>>;
 #[derive(Clone)]
 pub enum Activation<'a> {
     /// Sigmoid Activation function
-    Sigmoid { name: &'a str },
+    Sigmoid,
 
     /// Tanh Activation function
-    Tanh { name: &'a str },
+    Tanh,
 
     /// Relu Activation function
     ReLu {
-        name: &'a str,
         alpha: &'a f32,
         max_value: &'a f32,
         threshold: &'a f32,
@@ -55,10 +57,31 @@ pub enum Activation<'a> {
     SoftMax { axis: &'a u32 },
 }
 
-trait ActivationFunction<'a> {
-    fn default(&'a mut self) -> Result<()>;
+trait ActivationInterface<'a> {
+    fn calculate(&'a self, inputs: &'a Array2<f32>) -> Result<Array2<f32>>;
+}
 
-    fn calculate(&'a mut self, inputs: &'a Array2<f32>) -> Result<Array2<f32>>;
+impl<'a> ActivationInterface<'a> for Activation<'a> {
+    fn calculate(&'a self, inputs: &'a Array2<f32>) -> Result<Array2<f32>> {
+        match self {
+            Activation::Sigmoid => Ok(inputs.to_owned()),
+            Activation::Tanh => Ok(inputs.to_owned()),
+            Activation::ReLu {
+                alpha,
+                max_value,
+                threshold,
+            } => {
+                println!("{}", alpha);
+                println!("{}", max_value);
+                println!("{}", threshold);
+                Ok(inputs.to_owned())
+            }
+            Activation::SoftMax { axis } => {
+                println!("{}", axis);
+                Ok(inputs.to_owned())
+            }
+        }
+    }
 }
 
 /// Different types of loss functions supported by a NN Model
@@ -72,13 +95,11 @@ pub enum Loss<'a> {
 }
 
 trait LossFunction<'a> {
-    fn default(&'a mut self) -> Result<()>;
-
     fn calculate<L>(
         &'a mut self,
         y_true: &'a Array2<L>,
         y_pred: &'a Array2<L>,
-    ) -> Result<Array1<f32>>;
+    ) -> Result<Array2<f32>>;
 }
 
 /// Different types of Layers to construct a Neural Network
