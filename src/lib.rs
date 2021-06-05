@@ -7,9 +7,13 @@
 // Workaround for Clippy false positive in Rust 1.51.0.
 // https://github.com/rust-lang/rust-clippy/issues/6546
 #![allow(clippy::result_unit_err)]
+
 use csv::*;
 use image::*;
 use ndarray::{Array1, Array2, ArrayBase, Axis, Data, Ix1, Ix2};
+use plotters::prelude::*;
+
+use std::collections::HashMap;
 use thiserror::Error;
 
 /// Errors during Model interaction.
@@ -20,8 +24,11 @@ pub enum ModelError<'a> {
     #[error("{0}: Model is not compiled")]
     CompileError(&'a str),
 
-    #[error("{0}: Array Dimension Mismatch")]
+    #[error("{0}: Array dimension mismatch")]
     DimensionError(&'a str),
+
+    #[error("{0}: Input value outside expected range")]
+    ValueRangeError(&'a str),
 }
 
 /// Result type for Model Errors errors.
@@ -52,28 +59,33 @@ pub enum Activation<'a, S: ndarray::Data, D: ndarray::Dimension> {
 }
 
 trait ActivationFunction<'a, S: ndarray::Data, D: ndarray::Dimension> {
-    fn default(&'a mut self)-> Result<()>;
-    fn calculate<Si: ndarray::Data,Di: ndarray::Dimension>(&'a mut self, x: &'a ArrayBase<Si, Di>) -> Result<ArrayBase<S, D>>;
-} 
+    fn default(&'a mut self) -> Result<()>;
+
+    fn calculate<Si: ndarray::Data, Di: ndarray::Dimension>(
+        &'a mut self,
+        x: &'a ArrayBase<Si, Di>,
+    ) -> Result<ArrayBase<S, D>>;
+}
 
 /// Different types of loss functions supported by a NN Model
 #[derive(Clone)]
-pub enum Loss<'a, S: ndarray::Data, D: ndarray::Dimension> {
+pub enum Loss<'a> {
     /// Mean Square Error loss function
-    MeanSquareError {
-        result: &'a ArrayBase<S, D>,
-    },
+    MeanSquareError { result: &'a f32 },
 
     /// Entropy loss function
-    Entropy {
-        result: &'a ArrayBase<S, D>,
-    },
+    Entropy { result: &'a f32 },
 }
 
 trait LossFunction<'a, S: ndarray::Data, D: ndarray::Dimension> {
-    fn default(&'a mut self)-> Result<()>;
-    fn calculate<Si: ndarray::Data,Di: ndarray::Dimension>(&'a mut self, y_true: &'a ArrayBase<Si, Di>, y_pred: &'a ArrayBase<Si, Di>) -> Result<ArrayBase<S, D>>;
-} 
+    fn default(&'a mut self) -> Result<()>;
+
+    fn calculate<L>(
+        &'a mut self,
+        y_true: &'a Array1<L>,
+        y_pred: &'a Array1<L>,
+    ) -> Result<ArrayBase<S, D>>;
+}
 
 /// Different types of Layers to construct a Neural Network
 #[derive(Debug, Clone)]
@@ -83,14 +95,34 @@ pub enum Layer<'a> {
         activation: &'a str,
         input_dim: &'a u32,
         output_dim: &'a u32,
-        weights: &'a Array2<f64>,
+        weights: &'a Array2<f32>,
     },
 }
 
 trait ConfigureLayer<'a> {
-    fn default(&'a mut self)-> Result<()>;
-    fn get_weights(&'a self) -> Result<Array2<f64>>;
-    fn set_weights(&'a mut self, weights: &'a Array2<f64>) -> Result<()>;
+    fn default(&'a mut self) -> Result<()>;
+
+    fn get_weights(&'a self) -> Result<Array2<f32>>;
+
+    fn set_weights(&'a mut self, weights: &'a Array2<f32>) -> Result<()>;
+}
+
+/// Different types of Optimizers functions
+#[derive(Debug, Clone)]
+pub enum Optimizer<'a> {
+    /// Builds linear stack of layers into a model sequentially
+    StochasticGradientDescent {
+        learning_rate: &'a f32,
+        momentum: &'a f32,
+    },
+}
+
+trait OptimizerFunction<'a> {
+    fn default(&'a mut self) -> Result<()>;
+
+    fn get_params<K, V>(&'a self) -> Result<HashMap<K, V>>;
+
+    fn set_params<K, V>(&'a self, values: &'a HashMap<K, V>) -> Result<()>;
 }
 
 /// Different types of NN Model Constructors
@@ -104,26 +136,16 @@ pub enum ModelConstructor<'a> {
 }
 
 trait BuildModel<'a> {
-    fn default(&'a mut self)-> Result<()>;
-    fn add(&'a mut self, layer:& Layer<'a>) -> Result<()>;
-    fn pop(&'a mut self, layer:& Layer<'a>) -> Result<()>;
-    fn compile(&'a self, optimizer: & Optimizer<'a>, metrics: &[&'a str]) -> Result<Model>;
-} 
-
-/// Different types of Optimizers functions
-#[derive(Debug, Clone)]
-pub enum Optimizer<'a> {
-    /// Builds linear stack of layers into a model sequentially
-    StochasticGradientDescent {
-        learning_rate: &'a f64,
-        momentum: &'a f64,
-    },
+    fn default(&'a mut self) -> Result<()>;
+    fn add(&'a mut self, layer: &Layer<'a>) -> Result<()>;
+    fn pop(&'a mut self, layer: &Layer<'a>) -> Result<()>;
+    fn compile(
+        &'a self,
+        optimizer: &Optimizer<'a>,
+        metrics: &[&'a str],
+        validation_split: &'a f32,
+    ) -> Result<Model>;
 }
-
-trait OptimizerFunction<'a> {
-    fn default(&'a mut self)-> Result<()>;
-    fn get_params(&'a self) ->Result<Vec<&'a f64>>;
-} 
 
 /// Groups a linear stack of layers into a Model
 #[derive(Debug, Clone)]
@@ -132,6 +154,38 @@ pub struct Model<'a> {
     pub constructor: ModelConstructor<'a>,
     pub optimizer: Optimizer<'a>,
     pub metrics: Vec<&'a str>,
+    pub validation_split: &'a f32,
+    pub history: HashMap<u32, HashMap<String, f32>>,
+}
+
+trait UseModel<'a> {
+    fn fit<S: ndarray::Data, D: ndarray::Dimension, L>(
+        &'a mut self,
+        inputs: &'a ArrayBase<S, D>,
+        target: Array1<L>,
+    ) -> Result<()>;
+
+    fn predict<S: ndarray::Data, D: ndarray::Dimension, L>(
+        &'a self,
+        inputs: &'a ArrayBase<S, D>,
+        target: Array1<L>,
+    ) -> Result<Array1<L>>;
+
+    fn mse<S: ndarray::Data, D: ndarray::Dimension, L>(
+        &'a self,
+        inputs: &'a ArrayBase<S, D>,
+        target: Array1<L>,
+    ) -> Result<f32>;
+
+    fn entropy<S: ndarray::Data, D: ndarray::Dimension, L>(
+        &'a self,
+        inputs: &'a ArrayBase<S, D>,
+        target: Array1<L>,
+    ) -> Result<f32>;
+
+    fn mse_plot(&'a self) -> Result<()>;
+
+    fn entropy_plot(&'a self) -> Result<()>;
 }
 
 #[cfg(test)]
