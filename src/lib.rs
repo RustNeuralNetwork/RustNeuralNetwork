@@ -194,6 +194,7 @@ trait UseModel<'a> {
 #[cfg(test)]
 mod tests {
     use crate::*;
+
     #[test]
     fn test_sigmoid_activation() {
         fn f(x: f32) -> f32 {
@@ -217,6 +218,127 @@ mod tests {
                 .calculate(&array![[0.0, 1.0], [2.0, 3.0]])
                 .unwrap(),
             &array![[f(0.0), f(1.0)], [f(2.0), f(3.0)]]
+        );
+    }
+
+    #[test]
+    fn test_tanh_activation() {
+        fn f(x: f32) -> f32 {
+            x.tanh()
+        }
+
+        let activation = Activation::Tanh;
+        assert_eq!(
+            activation.calculate(&array![[0.0]]).unwrap(),
+            &array![[f(0.0)]]
+        );
+        assert_eq!(
+            activation.calculate(&array![[0.0, 1.0]]).unwrap(),
+            &array![[f(0.0), f(1.0)]]
+        );
+        assert_eq!(
+            activation.calculate(&array![[0.0], [1.0]]).unwrap(),
+            &array![[f(0.0)], [f(1.0)]]
+        );
+        assert_eq!(
+            activation
+                .calculate(&array![[0.0, 1.0], [2.0, 3.0]])
+                .unwrap(),
+            &array![[f(0.0), f(1.0)], [f(2.0), f(3.0)]]
+        );
+    }
+
+    #[test]
+    fn test_relu_activation() {
+        fn f(x: f32, alpha: f32, max_value: f32, threshold: f32) -> f32 {
+            let mut y = if x > threshold { x } else { alpha * x };
+            if y > max_value {
+                y = max_value
+            };
+            y
+        }
+
+        let mut alpha = 0.0;
+        let mut max_value = f32::MAX;
+        let mut threshold = 0.0;
+        let mut activation = Activation::ReLu {
+            alpha,
+            max_value,
+            threshold,
+        };
+        assert_eq!(
+            activation.calculate(&array![[0.0]]).unwrap(),
+            &array![[f(0.0, alpha, max_value, threshold)]]
+        );
+        assert_eq!(
+            activation.calculate(&array![[0.0, 1.0]]).unwrap(),
+            &array![[
+                f(0.0, alpha, max_value, threshold),
+                f(1.0, alpha, max_value, threshold)
+            ]]
+        );
+        assert_eq!(
+            activation.calculate(&array![[0.0], [1.0]]).unwrap(),
+            &array![
+                [f(0.0, alpha, max_value, threshold)],
+                [f(1.0, alpha, max_value, threshold)]
+            ]
+        );
+        assert_eq!(
+            activation
+                .calculate(&array![[0.0, 1.0], [2.0, 3.0]])
+                .unwrap(),
+            &array![
+                [
+                    f(0.0, alpha, max_value, threshold),
+                    f(1.0, alpha, max_value, threshold)
+                ],
+                [
+                    f(2.0, alpha, max_value, threshold),
+                    f(3.0, alpha, max_value, threshold)
+                ]
+            ]
+        );
+        alpha = 0.001;
+        max_value = 1.0;
+        threshold = 0.0;
+        activation = Activation::ReLu {
+            alpha,
+            max_value,
+            threshold,
+        };
+        assert_eq!(
+            activation.calculate(&array![[0.0]]).unwrap(),
+            &array![[f(0.0, alpha, max_value, threshold)]]
+        );
+        assert_eq!(
+            activation.calculate(&array![[0.0, 1.0]]).unwrap(),
+            &array![[
+                f(0.0, alpha, max_value, threshold),
+                f(1.0, alpha, max_value, threshold)
+            ]]
+        );
+        assert_eq!(
+            activation.calculate(&array![[0.0], [1.0]]).unwrap(),
+            &array![
+                [f(0.0, alpha, max_value, threshold)],
+                [f(1.0, alpha, max_value, threshold)]
+            ]
+        );
+        assert_eq!(
+            activation
+                .calculate(&array![[0.0, 1.0], [2.0, 3.0]])
+                .unwrap(),
+            &array![
+                [
+                    f(0.0, alpha, max_value, threshold),
+                    f(1.0, alpha, max_value, threshold)
+                ],
+                [
+                    f(2.0, alpha, max_value, threshold),
+                    f(3.0, alpha, max_value, threshold)
+                ]
+            ]
         );
     }
 }
