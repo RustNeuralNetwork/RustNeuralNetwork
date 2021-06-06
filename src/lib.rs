@@ -193,8 +193,30 @@ trait UseModel<'a> {
 
 #[cfg(test)]
 mod tests {
+    use crate::*;
     #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
+    fn test_sigmoid_activation() {
+        fn f(x: f32) -> f32 {
+            1.0 / (1.0 + x.exp())
+        }
+        let activation = Activation::Sigmoid;
+        assert_eq!(
+            activation.calculate(&array![[0.0]]).unwrap(),
+            &array![[f(0.0)]]
+        );
+        assert_eq!(
+            activation.calculate(&array![[0.0, 1.0]]).unwrap(),
+            &array![[f(0.0), f(1.0)]]
+        );
+        assert_eq!(
+            activation.calculate(&array![[0.0], [1.0]]).unwrap(),
+            &array![[f(0.0)], [f(1.0)]]
+        );
+        assert_eq!(
+            activation
+                .calculate(&array![[0.0, 1.0], [2.0, 3.0]])
+                .unwrap(),
+            &array![[f(0.0), f(1.0)], [f(2.0), f(3.0)]]
+        );
     }
 }
