@@ -55,7 +55,7 @@ pub enum Activation {
     },
 
     /// SoftMax Activation function
-    SoftMax { axis: u32 },
+    SoftMax { axis: usize },
 }
 
 trait ActivationInterface<'a> {
@@ -71,14 +71,14 @@ impl<'a> ActivationInterface<'a> for Activation {
                 alpha,
                 max_value,
                 threshold,
-            } =>  { 
-                let  result = inputs.map(|x| if *x > *threshold { *x } else {*alpha * *x});
-                Ok(result.map(|x| if *x < *max_value { *x } else { *max_value })) 
-            } 
-            Activation::SoftMax { axis } => {
-                println!("{}", axis);
-                Ok(inputs.to_owned())
-            }
+            } => Ok(inputs
+                .map(|x| if *x > *threshold { *x } else { *alpha * *x })
+                .map(|x| if *x < *max_value { *x } else { *max_value })),
+            Activation::SoftMax { axis } => Ok(inputs.mapv(|x| x.exp())
+                / inputs
+                    .mapv(|x| x.exp())
+                    .sum_axis(Axis(*axis))
+                    .insert_axis(Axis(*axis))),
         }
     }
 }
