@@ -116,6 +116,8 @@ pub enum Layer<'a, T: num_traits::float::Float> {
         output_dim: &'a u32,
         weights: &'a Array2<T>,
         loss: &'a Array1<T>,
+        prev_layer: Box<Option<Layer<'a, T>>>,
+        next_layer: Box<Option<Layer<'a, T>>>,
     },
 }
 
@@ -128,12 +130,7 @@ trait ConfigureLayer<'a, T: num_traits::float::Float> {
 
     fn forward_propagate(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>>;
 
-    fn back_propagate(
-        &'a self,
-        inputs: &'a Array2<T>,
-        next_layer_errors: &'a Array2<T>,
-        next_layer_errors: &'a Array2<T>,
-    ) -> Result<()>;
+    fn back_propagate(&'a self, inputs: &'a Array2<T>) -> Result<()>;
 }
 
 /// Different types of Optimizers functions
