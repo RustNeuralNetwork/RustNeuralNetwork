@@ -1,6 +1,13 @@
 //! RustNeuralNetwork is Neural Network library that supports multi-layer full connected neural network
 //! for applying machine learning to simple classification problems.
 //!
+//! This version of the library build primarily focus on NN structure, built in a modular.
+//! We used different Structs and Enums to have comparable interface as TensorFlow in python.
+//! This is very basic version but we tried to keep our architecture modular to allow for future expansion.
+//! For instance we defined Activation function as its own Enum type and implemented required methods using pattern matching,
+//! so that we can expand the support more variety of function types.
+//! Similar idea is used for Layer enum, which now only supports Dense layer required for NN, but can expand to layers required for other models like CNN.
+//!  
 
 // Shay Green & Vinodh Kotipalli 2021
 
@@ -66,7 +73,9 @@ trait ActivationInterface<'a, T: num_traits::float::Float> {
     fn calculate_derivative(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>>;
 }
 
-/// helper functions
+/// Set of Helper functions to refactor the Trait implementations for better readability
+
+/// Sigmoid function that takes in and returns a generic float type
 fn sigmoid<T: num_traits::float::Float>(x: T) -> T {
     T::from(1.0).unwrap() / (T::from(1.0).unwrap() + x.exp())
 }
@@ -81,7 +90,59 @@ fn relu<T: num_traits::float::Float>(x: T, alpha: T, max_value: T, threshold: T)
     }
 }
 
+fn relu_derivative<T: num_traits::float::Float>(x: T, alpha: T, max_value: T, threshold: T) -> T {
+    if x > max_value {
+        T::from(0.0).unwrap()
+    } else if x == max_value {
+        T::from(0.5).unwrap()
+    } else if x > threshold {
+        T::from(1.0).unwrap()
+    } else if x == threshold {
+        (T::from(1.0).unwrap() + alpha) / T::from(2.0).unwrap()
+    } else {
+        alpha
+    }
+}
+
+fn max_axis<T: num_traits::float::Float>(axis: usize, inputs: &'_ Array2<T>) -> Array2<T> {
+    inputs
+        .map_axis(Axis(axis), |x| {
+            let first = x.first();
+            let z = x
+                .fold(first, |acc, y| if acc > Some(y) { acc } else { Some(y) })
+                .unwrap();
+            z.to_owned()
+        })
+        .insert_axis(Axis(axis))
+}
+
+fn _min_axis<T: num_traits::float::Float>(axis: usize, inputs: &'_ Array2<T>) -> Array2<T> {
+    inputs
+        .map_axis(Axis(axis), |x| {
+            let first = x.first();
+            let z = x
+                .fold(first, |acc, y| if acc > Some(y) { acc } else { Some(y) })
+                .unwrap();
+            z.to_owned()
+        })
+        .insert_axis(Axis(axis))
+}
+
+fn mean_axis<T: num_traits::float::Float>(axis: usize, inputs: &'_ Array2<T>) -> Array1<T> {
+    inputs.map_axis(Axis(axis), |x| x.sum() / T::from(x.len()).unwrap())
+}
+
+fn stable_softmax<T: num_traits::float::Float>(axis: usize, inputs: &'_ Array2<T>) -> Array2<T> {
+    let inputs_shifted = inputs - max_axis(axis, inputs);
+    inputs_shifted.mapv(|x| x.exp())
+        / inputs_shifted
+            .mapv(|x| x.exp())
+            .sum_axis(Axis(axis))
+            .insert_axis(Axis(axis))
+}
+
 impl<'a, T: num_traits::float::Float> ActivationInterface<'a, T> for Activation<T> {
+    /// Calculates activation values using multiple functions used in NN base ML models
     fn calculate_value(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>> {
         match self {
             Activation::Sigmoid => Ok(inputs.mapv(sigmoid)),
@@ -91,15 +152,11 @@ impl<'a, T: num_traits::float::Float> ActivationInterface<'a, T> for Activation<
                 max_value,
                 threshold,
             } => Ok(inputs.mapv(|x| relu(x, *alpha, *max_value, *threshold))),
-            Activation::SoftMax { axis } => Ok(inputs.mapv(|x| x.exp())
-                / inputs
-                    .mapv(|x| x.exp())
-                    .sum_axis(Axis(*axis))
-                    .insert_axis(Axis(*axis))),
+            Activation::SoftMax { axis } => Ok(stable_softmax(*axis, inputs)),
         }
     }
 
-    /// Partially Implemented -> ReLu and Softmax is pending.
+    /// Calculates derivatives of activation values using multiple functions used in NN base ML models
     fn calculate_derivative(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>> {
         match self {
             Activation::Sigmoid => Ok(inputs.mapv(|x| {
@@ -113,20 +170,10 @@ impl<'a, T: num_traits::float::Float> ActivationInterface<'a, T> for Activation<
                 alpha,
                 max_value,
                 threshold,
-            } => Ok(inputs.map(|x| {
-                if *x > *max_value {
-                    *max_value
-                } else if *x > *threshold {
-                    *x
-                } else {
-                    *alpha * (*x - *threshold)
-                }
-            })),
-            Activation::SoftMax { axis } => Ok(inputs.mapv(|x| x.exp())
-                / inputs
-                    .mapv(|x| x.exp())
-                    .sum_axis(Axis(*axis))
-                    .insert_axis(Axis(*axis))),
+            } => Ok(inputs.mapv(|x| relu_derivative(x, *alpha, *max_value, *threshold))),
+            Activation::SoftMax { axis } => {
+                Ok(stable_softmax(*axis, inputs).mapv(|x| x * (T::from(1.0).unwrap() - x)))
+            }
         }
     }
 }
@@ -141,14 +188,79 @@ pub enum Loss {
     Entropy,
 }
 
-trait LossFunction<'a, T: num_traits::float::Float> {
-    fn calculate(&'a mut self, y_true: &'a Array2<T>, y_pred: &'a Array2<T>) -> Result<Array2<T>>;
+trait LossInterface<'a, T: num_traits::float::Float> {
+    fn calculate_value(
+        &'a mut self,
+        y_true: &'a Array2<T>,
+        y_pred: &'a Array2<T>,
+    ) -> Result<Array2<T>>;
+
+    fn calculate_derivative(
+        &'a mut self,
+        y_true: &'a Array2<T>,
+        y_pred: &'a Array2<T>,
+    ) -> Result<Array2<T>>;
 
     fn mean(&'a mut self, y_true: &'a Array2<T>, y_pred: &'a Array2<T>) -> Result<T>;
 
-    fn mean_axis(&'a mut self, y_true: &'a Array2<T>, y_pred: &'a Array2<T>) -> Result<Array1<T>>;
+    fn mean_axis(
+        &'a mut self,
+        y_true: &'a Array2<T>,
+        y_pred: &'a Array2<T>,
+        axis: usize,
+    ) -> Result<Array1<T>>;
 }
 
+/// As of now library only supports MSE loss and not entropy. 
+impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
+    /// Calculates loss values using multiple functions used in NN base ML models
+    fn calculate_value(
+        &'a mut self,
+        y_true: &'a Array2<T>,
+        y_pred: &'a Array2<T>,
+    ) -> Result<Array2<T>> {
+        match self {
+            Loss::MeanSquareError => Ok((y_pred - y_true).mapv(|x| (x * x))),
+            Loss::Entropy => Err(ModelError::InvalidLossFunction("Entropy")),
+        }
+    }
+
+    /// Calculates loss values using multiple functions used in NN base ML models
+    fn calculate_derivative(
+        &'a mut self,
+        y_true: &'a Array2<T>,
+        y_pred: &'a Array2<T>,
+    ) -> Result<Array2<T>> {
+        match self {
+            Loss::MeanSquareError => Ok(y_pred - y_true),
+            Loss::Entropy => Err(ModelError::InvalidLossFunction("Entropy")),
+        }
+    }
+
+    /// Calculates mean of loss values using multiple functions used in NN base ML models
+    fn mean(&'a mut self, y_true: &'a Array2<T>, y_pred: &'a Array2<T>) -> Result<T> {
+        match self {
+            Loss::MeanSquareError => {
+                let mse = (y_pred - y_true).mapv(|x| (x * x));
+                Ok(mse.sum() / T::from(mse.len()).unwrap())
+            }
+            Loss::Entropy => Err(ModelError::InvalidLossFunction("Entropy")),
+        }
+    }
+
+    /// Calculates mean of loss values over given axis using multiple functions used in NN base ML models
+    fn mean_axis(
+        &'a mut self,
+        y_true: &'a Array2<T>,
+        y_pred: &'a Array2<T>,
+        axis: usize,
+    ) -> Result<Array1<T>> {
+        match self {
+            Loss::MeanSquareError => Ok(mean_axis(axis, &(y_pred - y_true).mapv(|x| (x * x)))),
+            Loss::Entropy => Err(ModelError::InvalidLossFunction("Entropy")),
+        }
+    }
+}
 /// Different types of Layers to construct a Neural Network
 #[derive(Debug, Clone)]
 pub enum Layer<'a, T: num_traits::float::Float> {
@@ -228,13 +340,13 @@ pub struct Model<'a, T: num_traits::float::Float> {
 }
 
 trait UseModel<'a, T: num_traits::float::Float> {
-    fn fit(&'a mut self, inputs: &'a Array2<T>, target: Array1<T>) -> Result<()>;
+    fn fit(&'a mut self, inputs: &'a Array2<T>, target: Array2<T>) -> Result<()>;
 
     fn predict(&'a self, inputs: &'a Array2<T>) -> Result<Array1<T>>;
 
-    fn mse(&'a self, inputs: &'a Array2<T>, target: Array1<T>) -> Result<T>;
+    fn mse(&'a self, inputs: &'a Array2<T>, target: Array2<T>) -> Result<T>;
 
-    fn entropy(&'a self, inputs: &'a Array2<T>, target: Array1<T>) -> Result<T>;
+    fn entropy(&'a self, inputs: &'a Array2<T>, target: Array2<T>) -> Result<T>;
 
     fn mse_plot(&'a self) -> Result<()>;
 
@@ -301,11 +413,13 @@ mod tests {
     #[test]
     fn test_relu_activation() {
         fn f(x: f32, alpha: f32, max_value: f32, threshold: f32) -> f32 {
-            let mut y = if x > threshold { x } else { alpha * x };
-            if y > max_value {
-                y = max_value
-            };
-            y
+            if x > max_value {
+                max_value
+            } else if x > threshold {
+                x
+            } else {
+                alpha * (x - threshold)
+            }
         }
 
         let mut alpha = 0.0;
