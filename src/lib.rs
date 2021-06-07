@@ -10,9 +10,9 @@
 
 use ndarray::prelude::*;
 
-use csv::*;
-use image::*;
-use plotters::prelude::*;
+//use csv::*;
+//use image::*;
+//use plotters::prelude::*;
 
 use std::collections::HashMap;
 use thiserror::Error;
@@ -23,24 +23,29 @@ pub enum ModelError<'a> {
     /// Model should be compiled before being used for training(fit) or prediction(predict)
     /// to make path separators easier.
     #[error("{0}: Model is not compiled")]
-    CompileError(&'a str),
+    ModelNotCompile(&'a str),
 
     #[error("{0}: Array dimension mismatch")]
-    DimensionError(&'a str),
+    DimensionMismatch(&'a str),
 
     #[error("{0}: Input value outside expected range")]
-    ValueRangeError(&'a str),
+    ValueNotInRange(&'a str),
 
-    #[error("{0}: Activation Function not implemented")]
-    ActivationError(&'a str),
+    #[error("{0}: Activation function not implemented or not allowed for a given layer")]
+    InvalidActivationFunction(&'a str),
+
+    #[error("{0}: Loss function not implemented or not allowed for a given layer")]
+    InvalidLossFunction(&'a str),
 }
 
 /// Result type for Model Errors errors.
 pub type Result<'a, T> = std::result::Result<T, ModelError<'a>>;
 
+
+
 /// Different types of activation functions supported by a NN Layer
 #[derive(Clone)]
-pub enum Activation {
+pub enum Activation<T: num_traits::float::Float> {
     /// Sigmoid Activation function
     Sigmoid,
 
@@ -49,23 +54,23 @@ pub enum Activation {
 
     /// Relu Activation function
     ReLu {
-        alpha: f32,
-        max_value: f32,
-        threshold: f32,
+        alpha: T,
+        max_value: T,
+        threshold: T,
     },
 
     /// SoftMax Activation function
     SoftMax { axis: usize },
 }
 
-trait ActivationInterface<'a> {
-    fn calculate(&'a self, inputs: &'a Array2<f32>) -> Result<Array2<f32>>;
+trait ActivationInterface<'a,T: num_traits::float::Float> {
+    fn calculate(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>>;
 }
 
-impl<'a> ActivationInterface<'a> for Activation {
-    fn calculate(&'a self, inputs: &'a Array2<f32>) -> Result<Array2<f32>> {
+impl<'a,T: num_traits::float::Float> ActivationInterface<'a,T> for Activation<T> {
+    fn calculate(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>> {
         match self {
-            Activation::Sigmoid => Ok(inputs.mapv(|x| (1.0 / (1.0 + x.exp())))),
+            Activation::Sigmoid => Ok(inputs.mapv(|x| (T::from(1.0).unwrap() / (T::from(1.0).unwrap() + x.exp())))),
             Activation::Tanh => Ok(inputs.mapv(|x| x.tanh())),
             Activation::ReLu {
                 alpha,
@@ -93,12 +98,12 @@ pub enum Loss {
     Entropy,
 }
 
-trait LossFunction<'a> {
-    fn calculate<L>(
+trait LossFunction<'a,T: num_traits::float::Float> {
+    fn calculate(
         &'a mut self,
-        y_true: &'a Array2<L>,
-        y_pred: &'a Array2<L>,
-    ) -> Result<Array2<f32>>;
+        y_true: &'a Array2<T>,
+        y_pred: &'a Array2<T>,
+    ) -> Result<Array1<T>>;
 }
 
 /// Different types of Layers to construct a Neural Network
