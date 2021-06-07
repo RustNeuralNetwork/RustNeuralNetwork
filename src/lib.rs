@@ -190,7 +190,7 @@ pub struct Model<'a, T: num_traits::float::Float> {
 trait UseModel<'a, T: num_traits::float::Float> {
     fn fit(&'a mut self, inputs: &'a Array2<T>, target: Array1<T>) -> Result<()>;
 
-    fn predict<L>(&'a self, inputs: &'a Array2<T>) -> Result<Array1<T>>;
+    fn predict(&'a self, inputs: &'a Array2<T>) -> Result<Array1<T>>;
 
     fn mse(&'a self, inputs: &'a Array2<T>, target: Array1<T>) -> Result<T>;
 
