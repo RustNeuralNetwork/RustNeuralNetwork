@@ -62,23 +62,62 @@ pub enum Activation<T: num_traits::float::Float> {
 }
 
 trait ActivationInterface<'a, T: num_traits::float::Float> {
-    fn calculate(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>>;
+    fn calculate_value(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>>;
+    fn calculate_derivative(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>>;
+}
+
+/// helper functions
+fn sigmoid<T: num_traits::float::Float>(x: T) -> T {
+    T::from(1.0).unwrap() / (T::from(1.0).unwrap() + x.exp())
 }
 
 impl<'a, T: num_traits::float::Float> ActivationInterface<'a, T> for Activation<T> {
-    fn calculate(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>> {
+    fn calculate_value(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>> {
         match self {
-            Activation::Sigmoid => {
-                Ok(inputs.mapv(|x| (T::from(1.0).unwrap() / (T::from(1.0).unwrap() + x.exp()))))
-            }
+            Activation::Sigmoid => Ok(inputs.mapv(sigmoid)),
             Activation::Tanh => Ok(inputs.mapv(|x| x.tanh())),
             Activation::ReLu {
                 alpha,
                 max_value,
                 threshold,
-            } => Ok(inputs
-                .map(|x| if *x > *threshold { *x } else { *alpha * *x })
-                .map(|x| if *x < *max_value { *x } else { *max_value })),
+            } => Ok(inputs.map(|x| {
+                if *x > *max_value {
+                    *max_value
+                } else if *x > *threshold {
+                    *x
+                } else {
+                    *alpha * (*x - *threshold)
+                }
+            })),
+            Activation::SoftMax { axis } => Ok(inputs.mapv(|x| x.exp())
+                / inputs
+                    .mapv(|x| x.exp())
+                    .sum_axis(Axis(*axis))
+                    .insert_axis(Axis(*axis))),
+        }
+    }
+
+    /// Partially Implemented -> ReLu and Softmax is pending. 
+    fn calculate_derivative(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>> {
+        match self {
+            Activation::Sigmoid => Ok(inputs.mapv(|x| {
+                let y = sigmoid(x);
+                y * (T::from(1.0).unwrap() - y)
+            })),
+            Activation::Tanh => Ok(inputs.mapv(|x| (T::from(1.0).unwrap() - x.tanh().powf(T::from(2.0).unwrap())))),
+            Activation::ReLu {
+                alpha,
+                max_value,
+                threshold,
+            } => Ok(inputs.map(|x| {
+                if *x > *max_value {
+                    *max_value
+                } else if *x > *threshold {
+                    *x
+                } else {
+                    *alpha * (*x - *threshold)
+                }
+            })),
             Activation::SoftMax { axis } => Ok(inputs.mapv(|x| x.exp())
                 / inputs
                     .mapv(|x| x.exp())
