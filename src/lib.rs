@@ -38,11 +38,14 @@ pub enum ModelError<'a> {
     #[error("{0}: Input value outside expected range")]
     ValueNotInRange(&'a str),
 
-    #[error("{0}: Activation function not implemented or not allowed for a given layer")]
+    #[error("{0}: Activation function not allowed for a given layer")]
     InvalidActivationFunction(&'a str),
 
-    #[error("{0}: Loss function not implemented or not allowed for a given layer")]
+    #[error("{0}: Loss function  not allowed for a given layer")]
     InvalidLossFunction(&'a str),
+
+    #[error("{0}: Feature is defined but not implemented")]
+    MissingImplementation(&'a str),
 }
 
 /// Result type for Model Errors errors.
@@ -211,7 +214,7 @@ trait LossInterface<'a, T: num_traits::float::Float> {
     ) -> Result<Array1<T>>;
 }
 
-/// As of now library only supports MSE loss and not entropy. 
+/// As of now library only supports MSE loss and not entropy.
 impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
     /// Calculates loss values using multiple functions used in NN base ML models
     fn calculate_value(
@@ -221,7 +224,7 @@ impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
     ) -> Result<Array2<T>> {
         match self {
             Loss::MeanSquareError => Ok((y_pred - y_true).mapv(|x| (x * x))),
-            Loss::Entropy => Err(ModelError::InvalidLossFunction("Entropy")),
+            Loss::Entropy => Err(ModelError::MissingImplementation("Entropy")),
         }
     }
 
@@ -233,7 +236,7 @@ impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
     ) -> Result<Array2<T>> {
         match self {
             Loss::MeanSquareError => Ok(y_pred - y_true),
-            Loss::Entropy => Err(ModelError::InvalidLossFunction("Entropy")),
+            Loss::Entropy => Err(ModelError::MissingImplementation("Entropy")),
         }
     }
 
@@ -244,7 +247,7 @@ impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
                 let mse = (y_pred - y_true).mapv(|x| (x * x));
                 Ok(mse.sum() / T::from(mse.len()).unwrap())
             }
-            Loss::Entropy => Err(ModelError::InvalidLossFunction("Entropy")),
+            Loss::Entropy => Err(ModelError::MissingImplementation("Entropy")),
         }
     }
 
@@ -257,7 +260,7 @@ impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
     ) -> Result<Array1<T>> {
         match self {
             Loss::MeanSquareError => Ok(mean_axis(axis, &(y_pred - y_true).mapv(|x| (x * x)))),
-            Loss::Entropy => Err(ModelError::InvalidLossFunction("Entropy")),
+            Loss::Entropy => Err(ModelError::MissingImplementation("Entropy")),
         }
     }
 }
