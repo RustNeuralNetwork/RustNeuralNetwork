@@ -71,6 +71,16 @@ fn sigmoid<T: num_traits::float::Float>(x: T) -> T {
     T::from(1.0).unwrap() / (T::from(1.0).unwrap() + x.exp())
 }
 
+fn relu<T: num_traits::float::Float>(x: T, alpha: T, max_value: T, threshold: T) -> T {
+    if x > max_value {
+        max_value
+    } else if x > threshold {
+        x
+    } else {
+        alpha * (x - threshold)
+    }
+}
+
 impl<'a, T: num_traits::float::Float> ActivationInterface<'a, T> for Activation<T> {
     fn calculate_value(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>> {
         match self {
@@ -80,15 +90,7 @@ impl<'a, T: num_traits::float::Float> ActivationInterface<'a, T> for Activation<
                 alpha,
                 max_value,
                 threshold,
-            } => Ok(inputs.map(|x| {
-                if *x > *max_value {
-                    *max_value
-                } else if *x > *threshold {
-                    *x
-                } else {
-                    *alpha * (*x - *threshold)
-                }
-            })),
+            } => Ok(inputs.mapv(|x| relu(x, *alpha, *max_value, *threshold))),
             Activation::SoftMax { axis } => Ok(inputs.mapv(|x| x.exp())
                 / inputs
                     .mapv(|x| x.exp())
@@ -97,14 +99,16 @@ impl<'a, T: num_traits::float::Float> ActivationInterface<'a, T> for Activation<
         }
     }
 
-    /// Partially Implemented -> ReLu and Softmax is pending. 
+    /// Partially Implemented -> ReLu and Softmax is pending.
     fn calculate_derivative(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>> {
         match self {
             Activation::Sigmoid => Ok(inputs.mapv(|x| {
                 let y = sigmoid(x);
                 y * (T::from(1.0).unwrap() - y)
             })),
-            Activation::Tanh => Ok(inputs.mapv(|x| (T::from(1.0).unwrap() - x.tanh().powf(T::from(2.0).unwrap())))),
+            Activation::Tanh => {
+                Ok(inputs.mapv(|x| (T::from(1.0).unwrap() - x.tanh().powf(T::from(2.0).unwrap()))))
+            }
             Activation::ReLu {
                 alpha,
                 max_value,
@@ -248,20 +252,20 @@ mod tests {
         }
         let activation = Activation::Sigmoid;
         assert_eq!(
-            activation.calculate(&array![[0.0]]).unwrap(),
+            activation.calculate_value(&array![[0.0]]).unwrap(),
             &array![[f(0.0)]]
         );
         assert_eq!(
-            activation.calculate(&array![[0.0, 1.0]]).unwrap(),
+            activation.calculate_value(&array![[0.0, 1.0]]).unwrap(),
             &array![[f(0.0), f(1.0)]]
         );
         assert_eq!(
-            activation.calculate(&array![[0.0], [1.0]]).unwrap(),
+            activation.calculate_value(&array![[0.0], [1.0]]).unwrap(),
             &array![[f(0.0)], [f(1.0)]]
         );
         assert_eq!(
             activation
-                .calculate(&array![[0.0, 1.0], [2.0, 3.0]])
+                .calculate_value(&array![[0.0, 1.0], [2.0, 3.0]])
                 .unwrap(),
             &array![[f(0.0), f(1.0)], [f(2.0), f(3.0)]]
         );
@@ -275,20 +279,20 @@ mod tests {
 
         let activation = Activation::Tanh;
         assert_eq!(
-            activation.calculate(&array![[0.0]]).unwrap(),
+            activation.calculate_value(&array![[0.0]]).unwrap(),
             &array![[f(0.0)]]
         );
         assert_eq!(
-            activation.calculate(&array![[0.0, 1.0]]).unwrap(),
+            activation.calculate_value(&array![[0.0, 1.0]]).unwrap(),
             &array![[f(0.0), f(1.0)]]
         );
         assert_eq!(
-            activation.calculate(&array![[0.0], [1.0]]).unwrap(),
+            activation.calculate_value(&array![[0.0], [1.0]]).unwrap(),
             &array![[f(0.0)], [f(1.0)]]
         );
         assert_eq!(
             activation
-                .calculate(&array![[0.0, 1.0], [2.0, 3.0]])
+                .calculate_value(&array![[0.0, 1.0], [2.0, 3.0]])
                 .unwrap(),
             &array![[f(0.0), f(1.0)], [f(2.0), f(3.0)]]
         );
@@ -313,18 +317,18 @@ mod tests {
             threshold,
         };
         assert_eq!(
-            activation.calculate(&array![[0.0]]).unwrap(),
+            activation.calculate_value(&array![[0.0]]).unwrap(),
             &array![[f(0.0, alpha, max_value, threshold)]]
         );
         assert_eq!(
-            activation.calculate(&array![[0.0, 1.0]]).unwrap(),
+            activation.calculate_value(&array![[0.0, 1.0]]).unwrap(),
             &array![[
                 f(0.0, alpha, max_value, threshold),
                 f(1.0, alpha, max_value, threshold)
             ]]
         );
         assert_eq!(
-            activation.calculate(&array![[0.0], [1.0]]).unwrap(),
+            activation.calculate_value(&array![[0.0], [1.0]]).unwrap(),
             &array![
                 [f(0.0, alpha, max_value, threshold)],
                 [f(1.0, alpha, max_value, threshold)]
@@ -332,7 +336,7 @@ mod tests {
         );
         assert_eq!(
             activation
-                .calculate(&array![[0.0, 1.0], [2.0, 3.0]])
+                .calculate_value(&array![[0.0, 1.0], [2.0, 3.0]])
                 .unwrap(),
             &array![
                 [
@@ -354,18 +358,18 @@ mod tests {
             threshold,
         };
         assert_eq!(
-            activation.calculate(&array![[0.0]]).unwrap(),
+            activation.calculate_value(&array![[0.0]]).unwrap(),
             &array![[f(0.0, alpha, max_value, threshold)]]
         );
         assert_eq!(
-            activation.calculate(&array![[0.0, 1.0]]).unwrap(),
+            activation.calculate_value(&array![[0.0, 1.0]]).unwrap(),
             &array![[
                 f(0.0, alpha, max_value, threshold),
                 f(1.0, alpha, max_value, threshold)
             ]]
         );
         assert_eq!(
-            activation.calculate(&array![[0.0], [1.0]]).unwrap(),
+            activation.calculate_value(&array![[0.0], [1.0]]).unwrap(),
             &array![
                 [f(0.0, alpha, max_value, threshold)],
                 [f(1.0, alpha, max_value, threshold)]
@@ -373,7 +377,7 @@ mod tests {
         );
         assert_eq!(
             activation
-                .calculate(&array![[0.0, 1.0], [2.0, 3.0]])
+                .calculate_value(&array![[0.0, 1.0], [2.0, 3.0]])
                 .unwrap(),
             &array![
                 [
