@@ -41,8 +41,6 @@ pub enum ModelError<'a> {
 /// Result type for Model Errors errors.
 pub type Result<'a, T> = std::result::Result<T, ModelError<'a>>;
 
-
-
 /// Different types of activation functions supported by a NN Layer
 #[derive(Clone)]
 pub enum Activation<T: num_traits::float::Float> {
@@ -63,14 +61,16 @@ pub enum Activation<T: num_traits::float::Float> {
     SoftMax { axis: usize },
 }
 
-trait ActivationInterface<'a,T: num_traits::float::Float> {
+trait ActivationInterface<'a, T: num_traits::float::Float> {
     fn calculate(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>>;
 }
 
-impl<'a,T: num_traits::float::Float> ActivationInterface<'a,T> for Activation<T> {
+impl<'a, T: num_traits::float::Float> ActivationInterface<'a, T> for Activation<T> {
     fn calculate(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>> {
         match self {
-            Activation::Sigmoid => Ok(inputs.mapv(|x| (T::from(1.0).unwrap() / (T::from(1.0).unwrap() + x.exp())))),
+            Activation::Sigmoid => {
+                Ok(inputs.mapv(|x| (T::from(1.0).unwrap() / (T::from(1.0).unwrap() + x.exp()))))
+            }
             Activation::Tanh => Ok(inputs.mapv(|x| x.tanh())),
             Activation::ReLu {
                 alpha,
@@ -98,37 +98,42 @@ pub enum Loss {
     Entropy,
 }
 
-trait LossFunction<'a,T: num_traits::float::Float> {
-    fn calculate(
-        &'a mut self,
-        y_true: &'a Array2<T>,
-        y_pred: &'a Array2<T>,
-    ) -> Result<Array1<T>>;
+trait LossFunction<'a, T: num_traits::float::Float> {
+    fn calculate(&'a mut self, y_true: &'a Array2<T>, y_pred: &'a Array2<T>) -> Result<Array2<T>>;
+
+    fn mean(&'a mut self, y_true: &'a Array2<T>, y_pred: &'a Array2<T>) -> Result<T>;
+
+    fn mean_axis(&'a mut self, y_true: &'a Array2<T>, y_pred: &'a Array2<T>) -> Result<Array1<T>>;
 }
 
 /// Different types of Layers to construct a Neural Network
 #[derive(Debug, Clone)]
-pub enum Layer<'a> {
+pub enum Layer<'a, T: num_traits::float::Float> {
     /// Regular densely-connected Neural Network Layer
     Dense {
         activation: &'a str,
         input_dim: &'a u32,
         output_dim: &'a u32,
-        weights: &'a Array2<f32>,
-        loss: &'a Array1<f32>,
+        weights: &'a Array2<T>,
+        loss: &'a Array1<T>,
     },
 }
 
-trait ConfigureLayer<'a> {
+trait ConfigureLayer<'a, T: num_traits::float::Float> {
     fn default(&'a mut self) -> Result<()>;
 
-    fn get_weights(&'a self) -> Result<Array2<f32>>;
+    fn get_weights(&'a self) -> Result<Array2<T>>;
 
-    fn set_weights(&'a mut self, weights: &'a Array2<f32>) -> Result<()>;
+    fn set_weights(&'a mut self, weights: &'a Array2<T>) -> Result<()>;
 
-    fn forward_propagate(&'a self, inputs: &'a Array2<f32>) -> Result<Array2<f32>>;
+    fn forward_propagate(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>>;
 
-    fn back_propagate(&'a self, inputs: &'a Array2<f32>, errors: &'a Array2<f32>) -> Result<()>;
+    fn back_propagate(
+        &'a self,
+        inputs: &'a Array2<T>,
+        next_layer_errors: &'a Array2<T>,
+        next_layer_errors: &'a Array2<T>,
+    ) -> Result<()>;
 }
 
 /// Different types of Optimizers functions
@@ -151,45 +156,45 @@ trait OptimizerFunction<'a> {
 
 /// Different types of NN Model Constructors
 #[derive(Debug, Clone)]
-pub enum ModelConstructor<'a> {
+pub enum ModelConstructor<'a, T: num_traits::float::Float> {
     /// Builds linear stack of layers into a model sequentially
     Sequential {
         name: &'a str,
-        layers: Vec<Layer<'a>>,
+        layers: Vec<Layer<'a, T>>,
     },
 }
 
-trait BuildModel<'a> {
+trait BuildModel<'a, T: num_traits::float::Float> {
     fn default(&'a mut self) -> Result<()>;
-    fn add(&'a mut self, layer: &Layer<'a>) -> Result<()>;
-    fn pop(&'a mut self, layer: &Layer<'a>) -> Result<()>;
+    fn add(&'a mut self, layer: &Layer<'a, T>) -> Result<()>;
+    fn pop(&'a mut self, layer: &Layer<'a, T>) -> Result<()>;
     fn compile(
         &'a self,
         optimizer: &Optimizer<'a>,
         metrics: &[&'a str],
         validation_split: &'a f32,
-    ) -> Result<Model>;
+    ) -> Result<Model<T>>;
 }
 
 /// Groups a linear stack of layers into a Model
 #[derive(Debug, Clone)]
-pub struct Model<'a> {
+pub struct Model<'a, T: num_traits::float::Float> {
     pub name: &'a str,
-    pub constructor: ModelConstructor<'a>,
+    pub constructor: ModelConstructor<'a, T>,
     pub optimizer: Optimizer<'a>,
     pub metrics: Vec<&'a str>,
-    pub validation_split: &'a f32,
-    pub history: HashMap<u32, HashMap<String, f32>>,
+    pub validation_split: &'a T,
+    pub history: HashMap<u32, HashMap<String, T>>,
 }
 
-trait UseModel<'a> {
-    fn fit<L>(&'a mut self, inputs: &'a Array2<f32>, target: Array1<L>) -> Result<()>;
+trait UseModel<'a, T: num_traits::float::Float> {
+    fn fit(&'a mut self, inputs: &'a Array2<T>, target: Array1<T>) -> Result<()>;
 
-    fn predict<L>(&'a self, inputs: &'a Array2<f32>, target: Array1<L>) -> Result<Array1<L>>;
+    fn predict<L>(&'a self, inputs: &'a Array2<T>) -> Result<Array1<T>>;
 
-    fn mse<L>(&'a self, inputs: &'a Array2<f32>, target: Array1<L>) -> Result<f32>;
+    fn mse(&'a self, inputs: &'a Array2<T>, target: Array1<T>) -> Result<T>;
 
-    fn entropy<L>(&'a self, inputs: &'a Array2<f32>, target: Array1<L>) -> Result<f32>;
+    fn entropy(&'a self, inputs: &'a Array2<T>, target: Array1<T>) -> Result<T>;
 
     fn mse_plot(&'a self) -> Result<()>;
 
