@@ -363,16 +363,36 @@ pub enum Optimizer<'a> {
     /// Builds linear stack of layers into a model sequentially
     StochasticGradientDescent {
         learning_rate: &'a f32,
-        momentum: &'a f32,
+        momentum: &'a Option<f32>,
     },
 }
 
-trait OptimizerFunction<'a> {
-    fn default(&'a mut self) -> Result<()>;
+trait OptimizerInterface<'a> {
+    fn create(&'a mut self) -> Result<()>;
 
     fn get_params<K, V>(&'a self) -> Result<HashMap<K, V>>;
 
-    fn set_params<K, V>(&'a self, values: &'a HashMap<K, V>) -> Result<()>;
+    fn set_params<K, V>(&'a mut self, values: &'a HashMap<K, V>) -> Result<()>;
+}
+
+impl<'a> OptimizerInterface<'a> for Optimizer<'a> {
+    fn create(&'a mut self) -> Result<()> {
+        Err(ModelError::MissingImplementation(
+            "OptimizerInterface::create",
+        ))
+    }
+
+    fn get_params<K, V>(&'a self) -> Result<HashMap<K, V>> {
+        Err(ModelError::MissingImplementation(
+            "OptimizerInterface::create",
+        ))
+    }
+
+    fn set_params<K, V>(&'a mut self, values: &'a HashMap<K, V>) -> Result<()> {
+        Err(ModelError::MissingImplementation(
+            "OptimizerInterface::create",
+        ))
+    }
 }
 
 /// Different types of NN Model Constructors
@@ -386,7 +406,7 @@ pub enum ModelConstructor<'a, T: num_traits::float::Float> {
 }
 
 trait BuildModel<'a, T: num_traits::float::Float> {
-    fn default(&'a mut self) -> Result<()>;
+    fn create(&'a mut self) -> Result<()>;
     fn add(&'a mut self, layer: &Layer<'a, T>) -> Result<()>;
     fn pop(&'a mut self, layer: &Layer<'a, T>) -> Result<()>;
     fn compile(
@@ -396,6 +416,35 @@ trait BuildModel<'a, T: num_traits::float::Float> {
         metrics: &[&'a str],
         validation_split: &'a f32,
     ) -> Result<Model<T>>;
+}
+
+impl<'a, T: num_traits::float::Float> BuildModel<'a, T> for ModelConstructor<'a, T> {
+    fn create(&'a mut self) -> Result<()> {
+        Err(ModelError::MissingImplementation(
+            "OptimizerInterface::create",
+        ))
+    }
+    fn add(&'a mut self, layer: &Layer<'a, T>) -> Result<()> {
+        Err(ModelError::MissingImplementation(
+            "OptimizerInterface::create",
+        ))
+    }
+    fn pop(&'a mut self, layer: &Layer<'a, T>) -> Result<()> {
+        Err(ModelError::MissingImplementation(
+            "OptimizerInterface::create",
+        ))
+    }
+    fn compile(
+        &'a self,
+        optimizer: &Optimizer<'a>,
+        loss: &'a str,
+        metrics: &[&'a str],
+        validation_split: &'a f32,
+    ) -> Result<Model<T>> {
+        Err(ModelError::MissingImplementation(
+            "OptimizerInterface::create",
+        ))
+    }
 }
 
 /// Groups a linear stack of layers into a Model
@@ -412,7 +461,7 @@ pub struct Model<'a, T: num_traits::float::Float> {
 trait UseModel<'a, T: num_traits::float::Float> {
     fn fit(&'a mut self, inputs: &'a Array2<T>, target: &'a Array2<T>) -> Result<()>;
 
-    fn predict(&'a self, inputs: &'a Array2<T>) -> &'a Result<Array1<T>>;
+    fn predict(&'a self, inputs: &'a Array2<T>) -> Result<Array1<T>>;
 
     fn history(&'a self, key: Option<String>) -> Result<HashMap<u32, HashMap<String, T>>>;
 
@@ -424,6 +473,69 @@ trait UseModel<'a, T: num_traits::float::Float> {
         target: &'a Array2<T>,
         key: Option<String>,
     ) -> Result<HashMap<String, T>>;
+}
+
+impl<'a, T: num_traits::float::Float> UseModel<'a, T> for Model<'a, T> {
+    fn fit(&'a mut self, inputs: &'a Array2<T>, target: &'a Array2<T>) -> Result<()> {
+        Err(ModelError::MissingImplementation(
+            "OptimizerInterface::create",
+        ))
+    }
+    fn predict(&'a self, inputs: &'a Array2<T>) -> Result<Array1<T>> {
+        Err(ModelError::MissingImplementation(
+            "OptimizerInterface::create",
+        ))
+    }
+    fn history(&'a self, key: Option<String>) -> Result<HashMap<u32, HashMap<String, T>>> {
+        Err(ModelError::MissingImplementation(
+            "OptimizerInterface::create",
+        ))
+    }
+
+    fn history_plot(&'a self, key: Option<String>) -> Result<()> {
+        Err(ModelError::MissingImplementation(
+            "OptimizerInterface::create",
+        ))
+    }
+    fn metrics(
+        &'a self,
+        inputs: &'a Array2<T>,
+        target: &'a Array2<T>,
+        key: Option<String>,
+    ) -> Result<HashMap<String, T>> {
+        Err(ModelError::MissingImplementation(
+            "OptimizerInterface::create",
+        ))
+    }
+}
+
+impl<'a, T: num_traits::float::Float> BuildModel<'a, T> for Model<'a, T> {
+    fn create(&'a mut self) -> Result<()> {
+        Err(ModelError::MissingImplementation(
+            "OptimizerInterface::create",
+        ))
+    }
+    fn add(&'a mut self, layer: &Layer<'a, T>) -> Result<()> {
+        Err(ModelError::MissingImplementation(
+            "OptimizerInterface::create",
+        ))
+    }
+    fn pop(&'a mut self, layer: &Layer<'a, T>) -> Result<()> {
+        Err(ModelError::MissingImplementation(
+            "OptimizerInterface::create",
+        ))
+    }
+    fn compile(
+        &'a self,
+        optimizer: &Optimizer<'a>,
+        loss: &'a str,
+        metrics: &[&'a str],
+        validation_split: &'a f32,
+    ) -> Result<Model<T>> {
+        Err(ModelError::MissingImplementation(
+            "OptimizerInterface::create",
+        ))
+    }
 }
 
 #[cfg(test)]
