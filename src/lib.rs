@@ -961,7 +961,7 @@ impl<'a, T: 'static + num_traits::float::Float> OptimizerInterface<'a, T> for Op
         let weights_shape = weights.dim().to_owned();
         if inputs_shape.1 == losses_shape.1
             && weights_shape.1 == inputs_shape.0
-            && weights_shape.0 == losses_shape.1
+            && weights_shape.0 == losses_shape.0
         {
             if let Ok(learning_rate) = self.get_param("learning_rate".to_string()) {
                 Ok(weights
