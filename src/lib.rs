@@ -266,7 +266,7 @@ pub trait LossInterface<'a, T: num_traits::float::Float> {
     ) -> Result<Array2<T>>;
 
     fn calculate_derivative(
-        &'a mut self,
+        &'a self,
         y_true: &'a Array2<T>,
         y_pred: &'a Array2<T>,
     ) -> Result<Array2<T>>;
@@ -309,7 +309,7 @@ impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
     /// * `ModelError::MissingImplementation`
     ///     * if variant `Loss::Entropy` is used
     fn calculate_derivative(
-        &'a mut self,
+        &'a self,
         y_true: &'a Array2<T>,
         y_pred: &'a Array2<T>,
     ) -> Result<Array2<T>> {
@@ -395,12 +395,17 @@ pub trait ConfigureLayer<'a, T: num_traits::float::Float> {
         reset_weights: bool,
     ) -> Result<()>;
 
-    fn forward_propagate(&'a self, inputs: Array2<T>) -> Result<Array2<T>>;
+    fn forward_propagate(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>>;
 
-    fn back_propagate(&'a self, inputs: Array2<T>, targets: Array2<T>) -> Result<()>;
+    fn back_propagate(
+        &'a self,
+        inputs: &'a Array2<T>,
+        targets: &'a Array2<T>,
+        loss_function: Loss,
+    ) -> Result<()>;
 }
 
-impl<'a, T: num_traits::float::Float> ConfigureLayer<'a, T> for Layer<T> {
+impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<T> {
     /// Validates and creates a Layer to construct a Neural Network
     ///
     /// # Examples
@@ -620,16 +625,90 @@ impl<'a, T: num_traits::float::Float> ConfigureLayer<'a, T> for Layer<T> {
         }
     }
 
-    fn forward_propagate(&'a self, _inputs: Array2<T>) -> Result<Array2<T>> {
-        Err(ModelError::MissingImplementation(
-            "ConfigureLayer::forward_propagate",
-        ))
+    fn forward_propagate(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>> {
+        match self {
+            Layer::Dense {
+                activation,
+                input_dim,
+                output_dim: _,
+                weights: _,
+                loss_values: _,
+                prev_layer: _,
+                next_layer: _,
+            } => {
+                if activation.to_owned().is_valid().is_err() {
+                    if inputs.dim().0 == *input_dim {
+                        if let Ok(wt) = self.get_weights() {
+                            Ok(activation
+                                .to_owned()
+                                .calculate_value(&wt.dot(inputs))
+                                .unwrap())
+                        } else {
+                            Err(ModelError::WeightsNotInitialized("Layer::Dense"))
+                        }
+                    } else {
+                        Err(ModelError::DimensionMismatch(
+                            "ConfigureLayer::forward_propagate",
+                        ))
+                    }
+                } else {
+                    Err(ModelError::InvalidActivationFunction("Layer::Dense"))
+                }
+            }
+        }
     }
 
-    fn back_propagate(&'a self, _inputs: Array2<T>, _targets: Array2<T>) -> Result<()> {
-        Err(ModelError::MissingImplementation(
-            "ConfigureLayer::back_propagate",
-        ))
+    fn back_propagate(
+        &'a self,
+        inputs: &'a Array2<T>,
+        targets: &'a Array2<T>,
+        loss_function: Loss,
+    ) -> Result<()> {
+        match self {
+            Layer::Dense {
+                activation,
+                input_dim,
+                output_dim: _,
+                weights: _,
+                loss_values: _,
+                prev_layer,
+                next_layer,
+            } => {
+                if activation.to_owned().is_valid().is_err() {
+                    if let Ok(outputs) = self.forward_propagate(inputs) {
+                        let layer_below = prev_layer.to_owned();
+                        let layer_above = next_layer.to_owned();
+                        if layer_above.is_none() {
+                            print!("updated my loss values using targets");
+                            let wt = self.get_weights().unwrap();
+                            let activation_derivative = activation
+                                .to_owned()
+                                .calculate_derivative(&wt.dot(inputs))
+                                .unwrap();
+                            let error_derivative = loss_function
+                                .calculate_derivative(targets, &outputs)
+                                .unwrap();
+                            let new_losses = activation_derivative * error_derivative;
+                        } else {
+                            print!(
+                                "updated my loss values using next layer's loss and weight values"
+                            );
+                            print!("updated next layer's weights");
+                        };
+                        if layer_below.is_none() {
+                            print!("updated my weights")
+                        };
+                        Ok(())
+                    } else {
+                        Err(ModelError::DimensionMismatch(
+                            "ConfigureLayer::back_propagate",
+                        ))
+                    }
+                } else {
+                    Err(ModelError::InvalidActivationFunction("Layer::Dense"))
+                }
+            }
+        }
     }
 }
 
