@@ -960,8 +960,8 @@ impl<'a, T: 'static + num_traits::float::Float> OptimizerInterface<'a, T> for Op
         let inputs_shape = inputs.dim().to_owned();
         let weights_shape = weights.dim().to_owned();
         if inputs_shape.1 == losses_shape.1
-            && weights_shape.0 == inputs_shape.0
-            && weights_shape.1 == losses_shape.1
+            && weights_shape.1 == inputs_shape.0
+            && weights_shape.0 == losses_shape.1
         {
             if let Ok(learning_rate) = self.get_param("learning_rate".to_string()) {
                 Ok(weights
@@ -992,7 +992,7 @@ pub enum ModelConstructor<'a, T: num_traits::float::Float> {
 }
 
 trait BuildModel<'a, T: num_traits::float::Float> {
-    fn create(&'a mut self) -> Result<()>;
+    fn create(&'a mut self,name: &'a str) -> Result<()>;
     fn add(&'a mut self, layer: &Layer<T>) -> Result<()>;
     fn pop(&'a mut self, layer: &Layer<T>) -> Result<()>;
     fn compile(
@@ -1005,27 +1005,27 @@ trait BuildModel<'a, T: num_traits::float::Float> {
 }
 
 impl<'a, T: num_traits::float::Float> BuildModel<'a, T> for ModelConstructor<'a, T> {
-    fn create(&'a mut self) -> Result<()> {
+    fn create(&'a mut self, name: &'a str) -> Result<()> {
         Err(ModelError::MissingImplementation(
             "OptimizerInterface::create",
         ))
     }
-    fn add(&'a mut self, _layer: &Layer<T>) -> Result<()> {
+    fn add(&'a mut self, layer: &Layer<T>) -> Result<()> {
         Err(ModelError::MissingImplementation(
             "OptimizerInterface::create",
         ))
     }
-    fn pop(&'a mut self, _layer: &Layer<T>) -> Result<()> {
+    fn pop(&'a mut self, layer: &Layer<T>) -> Result<()> {
         Err(ModelError::MissingImplementation(
             "OptimizerInterface::create",
         ))
     }
     fn compile(
         &'a self,
-        _optimizer: &Optimizer<'a, T>,
-        _loss: &'a str,
-        _metrics: &[&'a str],
-        _validation_split: &'a T,
+        optimizer: &Optimizer<'a, T>,
+        loss: &'a str,
+        metrics: &[&'a str],
+        validation_split: &'a T,
     ) -> Result<Model<T>> {
         Err(ModelError::MissingImplementation(
             "OptimizerInterface::create",
@@ -1096,7 +1096,7 @@ impl<'a, T: num_traits::float::Float> UseModel<'a, T> for Model<'a, T> {
 }
 
 impl<'a, T: num_traits::float::Float> BuildModel<'a, T> for Model<'a, T> {
-    fn create(&'a mut self) -> Result<()> {
+    fn create(&'a mut self,name: &'a str) -> Result<()> {
         Err(ModelError::MissingImplementation(
             "OptimizerInterface::create",
         ))
