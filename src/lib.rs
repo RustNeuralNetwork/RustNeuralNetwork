@@ -44,6 +44,9 @@ pub enum ModelError<'a> {
     #[error("{0}: if weights of given layer is not initialized")]
     WeightsNotInitialized(&'a str),
 
+    #[error("{0}: if losses of given layer is not set")]
+    LossValuesNotSet(&'a str),
+
     #[error("{0}: Input value outside expected range")]
     ValueNotInRange(&'a str),
 
@@ -52,6 +55,9 @@ pub enum ModelError<'a> {
 
     #[error("{0}: Loss function  not allowed for a given layer")]
     InvalidLossFunction(&'a str),
+
+    #[error("{0}: Optimizer function  not allowed for a given layer")]
+    InvalidOptimizer(&'a str),
 
     #[error("{0}: Feature is defined but not implemented")]
     MissingImplementation(&'a str),
@@ -382,11 +388,20 @@ pub trait ConfigureLayer<'a, T: num_traits::float::Float> {
 
     fn shape(&'a self) -> Vec<usize>;
 
-    fn get_weights(&'a self) -> Result<Array2<T>>;
+    fn get_weights(&'a mut self) -> Result<Array2<T>>;
 
-    fn set_weights(&'a mut self, weights: Array2<T>) -> Result<()>;
+    fn set_weights(&'a mut self, new_weights: Array2<T>) -> Result<()>;
 
-    fn get_layer(&'a self, key: String) -> Result<Box<Option<Layer<T>>>>;
+    fn update_weights(
+        &'a mut self,
+        inputs: &'a Array2<T>,
+        optimizer: &Optimizer<'a, T>,
+    ) -> Result<()>;
+    fn get_losses(&'a mut self) -> Result<Array2<T>>;
+
+    fn set_losses(&'a mut self, new_losses: Array2<T>) -> Result<()>;
+
+    fn get_layer(&'a mut self, key: String) -> Result<Box<Option<Layer<T>>>>;
 
     fn set_layer(
         &'a mut self,
@@ -395,13 +410,14 @@ pub trait ConfigureLayer<'a, T: num_traits::float::Float> {
         reset_weights: bool,
     ) -> Result<()>;
 
-    fn forward_propagate(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>>;
+    fn forward_propagate(&'a mut self, inputs: &'a Array2<T>) -> Result<Array2<T>>;
 
     fn back_propagate(
-        &'a self,
+        &'a mut self,
         inputs: &'a Array2<T>,
         targets: &'a Array2<T>,
         loss_function: Loss,
+        optimizer: &Optimizer<'a, T>,
     ) -> Result<()>;
 }
 
@@ -501,7 +517,7 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
         }
     }
 
-    fn get_weights(&'a self) -> Result<Array2<T>> {
+    fn get_weights(&'a mut self) -> Result<Array2<T>> {
         match self {
             Layer::Dense {
                 activation: _,
@@ -550,7 +566,111 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
         }
     }
 
-    fn get_layer(&'a self, key: String) -> Result<Box<Option<Layer<T>>>> {
+    fn update_weights(
+        &'a mut self,
+        inputs: &'a Array2<T>,
+        optimizer: &Optimizer<'a, T>,
+    ) -> Result<()> {
+        match self {
+            Layer::Dense {
+                activation,
+                input_dim: _,
+                output_dim: _,
+                weights,
+                loss_values,
+                prev_layer: _,
+                next_layer: _,
+            } => {
+                let activation_function = activation.to_owned();
+                if activation_function.is_valid().is_ok() {
+                    if let Ok(outputs) = self.forward_propagate(inputs) {
+                        if let Ok(current_losses) = self.get_losses() {
+                            if let Ok(current_weights) = self.get_weights() {
+                                if let Ok(new_weights) = optimizer.calculate_weights(
+                                    outputs,
+                                    current_losses,
+                                    current_weights,
+                                ) {
+                                    self.set_weights(new_weights)
+                                } else {
+                                    Err(ModelError::InvalidOptimizer(
+                                        "ConfigureLayer::update_weights",
+                                    ))
+                                }
+                            } else {
+                                Err(ModelError::WeightsNotInitialized(
+                                    "ConfigureLayer::update_weights",
+                                ))
+                            }
+                        } else {
+                            Err(ModelError::LossValuesNotSet(
+                                "ConfigureLayer::update_weights",
+                            ))
+                        }
+                    } else {
+                        Err(ModelError::DimensionMismatch(
+                            "ConfigureLayer::update_weights",
+                        ))
+                    }
+                } else {
+                    Err(ModelError::InvalidActivationFunction(
+                        "ConfigureLayer::update_weights",
+                    ))
+                }
+            }
+        }
+    }
+
+    fn get_losses(&'a mut self) -> Result<Array2<T>> {
+        match self {
+            Layer::Dense {
+                activation: _,
+                input_dim: _,
+                output_dim: _,
+                weights: _,
+                loss_values,
+                prev_layer: _,
+                next_layer: _,
+            } => {
+                if let Some(lv) = loss_values.to_owned() {
+                    Ok(lv)
+                } else {
+                    Err(ModelError::LossValuesNotSet("Layer::Dense"))
+                }
+            }
+        }
+    }
+
+    fn set_losses(&'a mut self, new_losses: Array2<T>) -> Result<()> {
+        match self {
+            Layer::Dense {
+                activation,
+                input_dim,
+                output_dim,
+                weights,
+                loss_values: _,
+                prev_layer,
+                next_layer,
+            } => {
+                if new_losses.shape()[0] == *output_dim {
+                    *self = Layer::Dense {
+                        activation: activation.to_owned(),
+                        input_dim: input_dim.to_owned(),
+                        output_dim: output_dim.to_owned(),
+                        weights: weights.to_owned(),
+                        loss_values: Some(new_losses),
+                        prev_layer: prev_layer.to_owned(),
+                        next_layer: next_layer.to_owned(),
+                    };
+                    Ok(())
+                } else {
+                    Err(ModelError::DimensionMismatch("Layer::Dense"))
+                }
+            }
+        }
+    }
+
+    fn get_layer(&'a mut self, key: String) -> Result<Box<Option<Layer<T>>>> {
         match self {
             Layer::Dense {
                 activation: _,
@@ -625,7 +745,7 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
         }
     }
 
-    fn forward_propagate(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>> {
+    fn forward_propagate(&'a mut self, inputs: &'a Array2<T>) -> Result<Array2<T>> {
         match self {
             Layer::Dense {
                 activation,
@@ -636,11 +756,11 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
                 prev_layer: _,
                 next_layer: _,
             } => {
-                if activation.to_owned().is_valid().is_err() {
+                let activation_function = activation.to_owned();
+                if activation_function.is_valid().is_ok() {
                     if inputs.dim().0 == *input_dim {
                         if let Ok(wt) = self.get_weights() {
-                            Ok(activation
-                                .to_owned()
+                            Ok(activation_function
                                 .calculate_value(&wt.dot(inputs))
                                 .unwrap())
                         } else {
@@ -659,10 +779,11 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
     }
 
     fn back_propagate(
-        &'a self,
+        &'a mut self,
         inputs: &'a Array2<T>,
         targets: &'a Array2<T>,
         loss_function: Loss,
+        optimizer: &Optimizer<'a, T>,
     ) -> Result<()> {
         match self {
             Layer::Dense {
@@ -674,29 +795,54 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
                 prev_layer,
                 next_layer,
             } => {
-                if activation.to_owned().is_valid().is_err() {
+                if inputs.dim().1 != targets.dim().1 {
+                    return Err(ModelError::DimensionMismatch(
+                        "ConfigureLayer::back_propagate",
+                    ));
+                };
+                let activation_function = activation.to_owned();
+                if activation_function.is_valid().is_ok() {
                     if let Ok(outputs) = self.forward_propagate(inputs) {
-                        let layer_below = prev_layer.to_owned();
-                        let layer_above = next_layer.to_owned();
+                        let layer_below = self.get_layer("below".to_string()).unwrap();
+                        let layer_above = self.get_layer("above".to_string()).unwrap();
                         if layer_above.is_none() {
-                            print!("updated my loss values using targets");
+                            //"updated my loss values using targets"
                             let wt = self.get_weights().unwrap();
-                            let activation_derivative = activation
-                                .to_owned()
+                            let activation_derivative = activation_function
                                 .calculate_derivative(&wt.dot(inputs))
                                 .unwrap();
                             let error_derivative = loss_function
                                 .calculate_derivative(targets, &outputs)
                                 .unwrap();
-                            let new_losses = activation_derivative * error_derivative;
+                            let _loss_updated =
+                                self.set_losses(activation_derivative * error_derivative);
                         } else {
-                            print!(
-                                "updated my loss values using next layer's loss and weight values"
-                            );
-                            print!("updated next layer's weights");
+                            //"updated my loss values using next layer's loss and weight values"
+
+                            let wt = self.get_weights().unwrap();
+                            let activation_derivative = activation_function
+                                .calculate_derivative(&wt.dot(inputs))
+                                .unwrap();
+                            let mut layer_above_unwraped = layer_above.unwrap();
+                            if let Ok(next_losses) = layer_above_unwraped.get_losses() {
+                                let error_derivative = layer_above_unwraped
+                                    .get_weights()
+                                    .unwrap()
+                                    .t()
+                                    .dot(&next_losses);
+                                let _loss_updated =
+                                    self.set_losses(activation_derivative * error_derivative);
+                                //"updated next layer's weights"
+                                layer_above_unwraped.update_weights(&outputs, optimizer);
+                            } else {
+                                return Err(ModelError::LossValuesNotSet(
+                                    "ConfigureLayer::back_propagate",
+                                ));
+                            }
                         };
                         if layer_below.is_none() {
-                            print!("updated my weights")
+                            //"updated my weights"
+                            self.update_weights(inputs, optimizer);
                         };
                         Ok(())
                     } else {
@@ -705,7 +851,9 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
                         ))
                     }
                 } else {
-                    Err(ModelError::InvalidActivationFunction("Layer::Dense"))
+                    Err(ModelError::InvalidActivationFunction(
+                        "ConfigureLayer::back_propagate",
+                    ))
                 }
             }
         }
@@ -714,36 +862,54 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
 
 /// Different types of Optimizers functions
 #[derive(Debug, Clone)]
-pub enum Optimizer<'a> {
+pub enum Optimizer<'a, T: num_traits::float::Float> {
     /// Builds linear stack of layers into a model sequentially
     StochasticGradientDescent {
-        learning_rate: &'a f32,
-        momentum: &'a Option<f32>,
+        learning_rate: &'a T,
+        momentum: &'a Option<T>,
     },
 }
 
-trait OptimizerInterface<'a> {
+trait OptimizerInterface<'a, T: num_traits::float::Float> {
     fn create(&'a mut self) -> Result<()>;
 
-    fn get_params<K, V>(&'a self) -> Result<HashMap<K, V>>;
+    fn get_param(&'a self, key: String) -> Result<T>;
 
-    fn set_params<K, V>(&'a mut self, values: &'a HashMap<K, V>) -> Result<()>;
+    fn set_param(&'a mut self, key: String, value: &'a T) -> Result<()>;
+
+    fn calculate_weights(
+        &'a self,
+        outputs: Array2<T>,
+        losses: Array2<T>,
+        weights: Array2<T>,
+    ) -> Result<Array2<T>>;
 }
 
-impl<'a> OptimizerInterface<'a> for Optimizer<'a> {
+impl<'a, T: num_traits::float::Float> OptimizerInterface<'a, T> for Optimizer<'a, T> {
     fn create(&'a mut self) -> Result<()> {
         Err(ModelError::MissingImplementation(
             "OptimizerInterface::create",
         ))
     }
 
-    fn get_params<K, V>(&'a self) -> Result<HashMap<K, V>> {
+    fn get_param(&'a self, key: String) -> Result<T> {
         Err(ModelError::MissingImplementation(
             "OptimizerInterface::create",
         ))
     }
 
-    fn set_params<K, V>(&'a mut self, _values: &'a HashMap<K, V>) -> Result<()> {
+    fn set_param(&'a mut self, key: String, value: &'a T) -> Result<()> {
+        Err(ModelError::MissingImplementation(
+            "OptimizerInterface::create",
+        ))
+    }
+
+    fn calculate_weights(
+        &'a self,
+        outputs: Array2<T>,
+        losses: Array2<T>,
+        weights: Array2<T>,
+    ) -> Result<Array2<T>> {
         Err(ModelError::MissingImplementation(
             "OptimizerInterface::create",
         ))
@@ -766,10 +932,10 @@ trait BuildModel<'a, T: num_traits::float::Float> {
     fn pop(&'a mut self, layer: &Layer<T>) -> Result<()>;
     fn compile(
         &'a self,
-        optimizer: &Optimizer<'a>,
+        optimizer: &Optimizer<'a, T>,
         loss: &'a str,
         metrics: &[&'a str],
-        validation_split: &'a f32,
+        validation_split: &'a T,
     ) -> Result<Model<T>>;
 }
 
@@ -791,10 +957,10 @@ impl<'a, T: num_traits::float::Float> BuildModel<'a, T> for ModelConstructor<'a,
     }
     fn compile(
         &'a self,
-        _optimizer: &Optimizer<'a>,
+        _optimizer: &Optimizer<'a, T>,
         _loss: &'a str,
         _metrics: &[&'a str],
-        _validation_split: &'a f32,
+        _validation_split: &'a T,
     ) -> Result<Model<T>> {
         Err(ModelError::MissingImplementation(
             "OptimizerInterface::create",
@@ -807,7 +973,7 @@ impl<'a, T: num_traits::float::Float> BuildModel<'a, T> for ModelConstructor<'a,
 pub struct Model<'a, T: num_traits::float::Float> {
     pub name: &'a str,
     pub constructor: ModelConstructor<'a, T>,
-    pub optimizer: Optimizer<'a>,
+    pub optimizer: Optimizer<'a, T>,
     pub metrics: Vec<&'a str>,
     pub validation_split: &'a T,
     pub history: HashMap<u32, HashMap<String, T>>,
@@ -882,10 +1048,10 @@ impl<'a, T: num_traits::float::Float> BuildModel<'a, T> for Model<'a, T> {
     }
     fn compile(
         &'a self,
-        _optimizer: &Optimizer<'a>,
+        _optimizer: &Optimizer<'a, T>,
         _loss: &'a str,
         _metrics: &[&'a str],
-        _validation_split: &'a f32,
+        _validation_split: &'a T,
     ) -> Result<Model<T>> {
         Err(ModelError::MissingImplementation(
             "OptimizerInterface::create",
