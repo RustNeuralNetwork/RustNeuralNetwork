@@ -270,17 +270,19 @@ pub enum Layer<'a, T: num_traits::float::Float> {
     /// Regular densely-connected Neural Network Layer
     Dense {
         activation: &'a str,
-        input_dim: &'a u32,
-        output_dim: &'a u32,
+        input_dim: u32,
+        output_dim: u32,
         weights: &'a Array2<T>,
-        loss: &'a Array1<T>,
+        loss_values: &'a Option<Array2<T>>,
         prev_layer: Box<Option<Layer<'a, T>>>,
         next_layer: Box<Option<Layer<'a, T>>>,
     },
 }
 
 trait ConfigureLayer<'a, T: num_traits::float::Float> {
-    fn default(&'a mut self) -> Result<()>;
+    fn create(&'a mut self) -> Result<()>;
+
+    fn shape(&'a self) -> Vec<u32>;
 
     fn get_weights(&'a self) -> Result<Array2<T>>;
 
@@ -289,6 +291,70 @@ trait ConfigureLayer<'a, T: num_traits::float::Float> {
     fn forward_propagate(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>>;
 
     fn back_propagate(&'a self, inputs: &'a Array2<T>) -> Result<()>;
+}
+
+impl<'a, T: num_traits::float::Float> ConfigureLayer<'a, T> for Layer<'a, T> {
+    fn create(&'a mut self) -> Result<()> {
+        match self {
+            Layer::Dense {
+                activation: _,
+                input_dim,
+                output_dim,
+                weights: _,
+                loss_values: _,
+                prev_layer,
+                next_layer,
+            } => {
+                let layer_below = prev_layer.to_owned();
+                let layer_above = next_layer.to_owned();
+                if (layer_below.is_none() || layer_below.unwrap().shape()[1] == *input_dim)
+                    && (layer_above.is_none() || layer_above.unwrap().shape()[0] == *output_dim)
+                {
+                    Ok(())
+                } else {
+                    Err(ModelError::DimensionMismatch("Entropy"))
+                }
+            }
+        }
+    }
+
+    fn shape(&'a self) -> Vec<u32> {
+        match self {
+            Layer::Dense {
+                activation: _,
+                input_dim,
+                output_dim,
+                weights: _,
+                loss_values: _,
+                prev_layer: _,
+                next_layer: _,
+            } => [input_dim.to_owned(), output_dim.to_owned()].to_vec(),
+        }
+    }
+
+    fn get_weights(&'a self) -> Result<Array2<T>> {
+        Err(ModelError::MissingImplementation(
+            "ConfigureLayer::get_weights",
+        ))
+    }
+
+    fn set_weights(&'a mut self, weights: &'a Array2<T>) -> Result<()> {
+        Err(ModelError::MissingImplementation(
+            "ConfigureLayer::set_weights",
+        ))
+    }
+
+    fn forward_propagate(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>> {
+        Err(ModelError::MissingImplementation(
+            "ConfigureLayer::forward_propagate",
+        ))
+    }
+
+    fn back_propagate(&'a self, inputs: &'a Array2<T>) -> Result<()> {
+        Err(ModelError::MissingImplementation(
+            "ConfigureLayer::back_propagate",
+        ))
+    }
 }
 
 /// Different types of Optimizers functions
@@ -326,6 +392,7 @@ trait BuildModel<'a, T: num_traits::float::Float> {
     fn compile(
         &'a self,
         optimizer: &Optimizer<'a>,
+        loss: &'a str,
         metrics: &[&'a str],
         validation_split: &'a f32,
     ) -> Result<Model<T>>;
