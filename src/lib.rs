@@ -414,12 +414,9 @@ trait UseModel<'a, T: num_traits::float::Float> {
 
     fn predict(&'a self, inputs: &'a Array2<T>) -> &'a Result<Array1<T>>;
 
-    fn history(
-        &'a self,
-        inputs: &'a Array2<T>,
-        target: &'a Array2<T>,
-        key: Option<String>,
-    ) -> Result<HashMap<u32, HashMap<String, T>>>;
+    fn history(&'a self, key: Option<String>) -> Result<HashMap<u32, HashMap<String, T>>>;
+
+    fn history_plot(&'a self, key: Option<String>) -> Result<()>;
 
     fn metrics(
         &'a self,
@@ -427,13 +424,6 @@ trait UseModel<'a, T: num_traits::float::Float> {
         target: &'a Array2<T>,
         key: Option<String>,
     ) -> Result<HashMap<String, T>>;
-
-    fn history_plot(
-        &'a self,
-        inputs: &'a Array2<T>,
-        target: &'a Array2<T>,
-        key: Option<String>,
-    ) -> Result<()>;
 }
 
 #[cfg(test)]
