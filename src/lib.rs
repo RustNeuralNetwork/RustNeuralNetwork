@@ -56,8 +56,8 @@ pub enum ModelError<'a> {
     #[error("{0}: Loss function  not allowed for a given layer")]
     InvalidLossFunction(&'a str),
 
-    #[error("{0}: Optimizer function  not allowed for a given layer")]
-    InvalidOptimizer(&'a str),
+    #[error("{0}: Optimizer function  failed to calculated new weights")]
+    OptimizerFailed(&'a str),
 
     #[error("{0}: Feature is defined but not implemented")]
     MissingImplementation(&'a str),
@@ -576,39 +576,33 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
                 activation,
                 input_dim: _,
                 output_dim: _,
-                weights,
-                loss_values,
+                weights: _,
+                loss_values: _,
                 prev_layer: _,
                 next_layer: _,
             } => {
                 let activation_function = activation.to_owned();
                 if activation_function.is_valid().is_ok() {
-                    if let Ok(outputs) = self.forward_propagate(inputs) {
-                        if let Ok(current_losses) = self.get_losses() {
-                            if let Ok(current_weights) = self.get_weights() {
-                                if let Ok(new_weights) = optimizer.calculate_weights(
-                                    outputs,
-                                    current_losses,
-                                    current_weights,
-                                ) {
-                                    self.set_weights(new_weights)
-                                } else {
-                                    Err(ModelError::InvalidOptimizer(
-                                        "ConfigureLayer::update_weights",
-                                    ))
-                                }
+                    if let Ok(current_losses) = self.get_losses() {
+                        if let Ok(current_weights) = self.get_weights() {
+                            if let Ok(new_weights) = optimizer.calculate_weights(
+                                inputs.to_owned(),
+                                current_losses,
+                                current_weights,
+                            ) {
+                                self.set_weights(new_weights)
                             } else {
-                                Err(ModelError::WeightsNotInitialized(
+                                Err(ModelError::OptimizerFailed(
                                     "ConfigureLayer::update_weights",
                                 ))
                             }
                         } else {
-                            Err(ModelError::LossValuesNotSet(
+                            Err(ModelError::WeightsNotInitialized(
                                 "ConfigureLayer::update_weights",
                             ))
                         }
                     } else {
-                        Err(ModelError::DimensionMismatch(
+                        Err(ModelError::LossValuesNotSet(
                             "ConfigureLayer::update_weights",
                         ))
                     }
@@ -788,12 +782,12 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
         match self {
             Layer::Dense {
                 activation,
-                input_dim,
+                input_dim: _,
                 output_dim: _,
                 weights: _,
                 loss_values: _,
-                prev_layer,
-                next_layer,
+                prev_layer: _,
+                next_layer: _,
             } => {
                 if inputs.dim().1 != targets.dim().1 {
                     return Err(ModelError::DimensionMismatch(
@@ -833,7 +827,8 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
                                 let _loss_updated =
                                     self.set_losses(activation_derivative * error_derivative);
                                 //"updated next layer's weights"
-                                layer_above_unwraped.update_weights(&outputs, optimizer);
+                                let _updated_next_layer_weights =
+                                    layer_above_unwraped.update_weights(&outputs, optimizer);
                             } else {
                                 return Err(ModelError::LossValuesNotSet(
                                     "ConfigureLayer::back_propagate",
@@ -842,7 +837,7 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
                         };
                         if layer_below.is_none() {
                             //"updated my weights"
-                            self.update_weights(inputs, optimizer);
+                            return self.update_weights(inputs, optimizer);
                         };
                         Ok(())
                     } else {
@@ -877,42 +872,112 @@ trait OptimizerInterface<'a, T: num_traits::float::Float> {
 
     fn set_param(&'a mut self, key: String, value: &'a T) -> Result<()>;
 
+    fn is_valid(&'a self) -> Result<()>;
+
     fn calculate_weights(
         &'a self,
-        outputs: Array2<T>,
+        inputs: Array2<T>,
         losses: Array2<T>,
         weights: Array2<T>,
     ) -> Result<Array2<T>>;
 }
 
-impl<'a, T: num_traits::float::Float> OptimizerInterface<'a, T> for Optimizer<'a, T> {
+impl<'a, T: 'static + num_traits::float::Float> OptimizerInterface<'a, T> for Optimizer<'a, T> {
     fn create(&'a mut self) -> Result<()> {
-        Err(ModelError::MissingImplementation(
-            "OptimizerInterface::create",
-        ))
+        self.is_valid()
     }
 
+    fn is_valid(&'a self) -> Result<()> {
+        match self {
+            Optimizer::StochasticGradientDescent {
+                learning_rate: _,
+                momentum,
+            } => {
+                if let Some(mval) = momentum {
+                    if mval > &T::from(0.0).unwrap() {
+                        return Err(ModelError::MissingImplementation(
+                            "OptimizerInterface::is_valid",
+                        ));
+                    }
+                };
+                Ok(())
+            }
+        }
+    }
     fn get_param(&'a self, key: String) -> Result<T> {
-        Err(ModelError::MissingImplementation(
-            "OptimizerInterface::create",
-        ))
+        if self.is_valid().is_ok() {
+            match self {
+                Optimizer::StochasticGradientDescent {
+                    learning_rate,
+                    momentum: _,
+                } => match key.as_str() {
+                    "learning_rate" => Ok(*learning_rate.to_owned()),
+                    _ => Err(ModelError::ValueNotInRange(
+                        "Only allowed key values are [learning_rate]",
+                    )),
+                },
+            }
+        } else {
+            Err(ModelError::MissingImplementation(
+                "OptimizerInterface::get_param",
+            ))
+        }
     }
 
     fn set_param(&'a mut self, key: String, value: &'a T) -> Result<()> {
-        Err(ModelError::MissingImplementation(
-            "OptimizerInterface::create",
-        ))
+        if self.is_valid().is_ok() {
+            match self {
+                Optimizer::StochasticGradientDescent {
+                    learning_rate: _,
+                    momentum,
+                } => match key.as_str() {
+                    "learning_rate" => {
+                        *self = Optimizer::StochasticGradientDescent {
+                            learning_rate: value,
+                            momentum,
+                        };
+                        Ok(())
+                    }
+                    _ => Err(ModelError::ValueNotInRange(
+                        "Only allowed key values are [learning_rate]",
+                    )),
+                },
+            }
+        } else {
+            Err(ModelError::MissingImplementation(
+                "OptimizerInterface::set_param",
+            ))
+        }
     }
 
     fn calculate_weights(
         &'a self,
-        outputs: Array2<T>,
+        inputs: Array2<T>,
         losses: Array2<T>,
         weights: Array2<T>,
     ) -> Result<Array2<T>> {
-        Err(ModelError::MissingImplementation(
-            "OptimizerInterface::create",
-        ))
+        let losses_shape = losses.dim().to_owned();
+        let inputs_shape = inputs.dim().to_owned();
+        let weights_shape = weights.dim().to_owned();
+        if inputs_shape.1 == losses_shape.1
+            && weights_shape.0 == inputs_shape.0
+            && weights_shape.1 == losses_shape.1
+        {
+            if let Ok(learning_rate) = self.get_param("learning_rate".to_string()) {
+                Ok(weights
+                    + losses
+                        .dot(&inputs.t())
+                        .mapv(|x| x * learning_rate / T::from(inputs_shape.1).unwrap()))
+            } else {
+                Err(ModelError::MissingImplementation(
+                    "OptimizerInterface::calculate_weights",
+                ))
+            }
+        } else {
+            Err(ModelError::DimensionMismatch(
+                "OptimizerInterface::calculate_weights",
+            ))
+        }
     }
 }
 
