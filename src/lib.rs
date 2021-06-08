@@ -410,17 +410,30 @@ pub struct Model<'a, T: num_traits::float::Float> {
 }
 
 trait UseModel<'a, T: num_traits::float::Float> {
-    fn fit(&'a mut self, inputs: &'a Array2<T>, target: Array2<T>) -> Result<()>;
+    fn fit(&'a mut self, inputs: &'a Array2<T>, target: &'a Array2<T>) -> Result<()>;
 
-    fn predict(&'a self, inputs: &'a Array2<T>) -> Result<Array1<T>>;
+    fn predict(&'a self, inputs: &'a Array2<T>) -> &'a Result<Array1<T>>;
 
-    fn mse(&'a self, inputs: &'a Array2<T>, target: Array2<T>) -> Result<T>;
+    fn history(
+        &'a self,
+        inputs: &'a Array2<T>,
+        target: &'a Array2<T>,
+        key: Option<String>,
+    ) -> Result<HashMap<u32, HashMap<String, T>>>;
 
-    fn entropy(&'a self, inputs: &'a Array2<T>, target: Array2<T>) -> Result<T>;
+    fn metrics(
+        &'a self,
+        inputs: &'a Array2<T>,
+        target: &'a Array2<T>,
+        key: Option<String>,
+    ) -> Result<HashMap<String, T>>;
 
-    fn mse_plot(&'a self) -> Result<()>;
-
-    fn entropy_plot(&'a self) -> Result<()>;
+    fn history_plot(
+        &'a self,
+        inputs: &'a Array2<T>,
+        target: &'a Array2<T>,
+        key: Option<String>,
+    ) -> Result<()>;
 }
 
 #[cfg(test)]
