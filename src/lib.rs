@@ -1101,9 +1101,38 @@ impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for ModelConst
         }
     }
     fn pop(&'a mut self) -> Result<()> {
-        Err(ModelError::MissingImplementation(
-            "ModelConstructor::BuildModel::pop",
-        ))
+        match self {
+            ModelConstructor::Sequential {
+                name,
+                layers,
+                input_dim,
+                output_dim: _,
+            } => {
+                if let Some(mut new_layers) = layers.to_owned() {
+                    if !new_layers.is_empty() {
+                        let old_last_layer = new_layers.pop();
+                        let new_layers_len = new_layers.len();
+                        if new_layers_len > 0 {
+                            let _ = new_layers[new_layers_len - 1].set_layer(
+                                &None,
+                                "below".to_string(),
+                                true,
+                            );
+                        };
+                        *self = ModelConstructor::Sequential {
+                            name,
+                            layers: Some(new_layers),
+                            input_dim: input_dim.to_owned(),
+                            output_dim: Some(old_last_layer.unwrap().shape()[0]),
+                        };
+                        return Ok(());
+                    }
+                };
+                Err(ModelError::InvalidModel(
+                    "ModelConstructor::BuildModel::compile",
+                ))
+            }
+        }
     }
     fn compile(
         &'a mut self,
