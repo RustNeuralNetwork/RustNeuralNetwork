@@ -75,7 +75,7 @@ pub enum ModelError<'a> {
     InvalidLayer(&'a str),
 }
 
-/// Result type for Model Errors errors.
+/// Result type for model errors.
 pub type Result<'a, T> = std::result::Result<T, ModelError<'a>>;
 
 /// Different types of activation functions supported by a NN Layer
@@ -97,21 +97,20 @@ pub enum Activation<T: num_traits::float::Float> {
     /// SoftMax Activation function
     SoftMax { axis: usize },
 }
-/// Functions supported by
-/// * rust_neural_network::Activation`
+/// Functions supported by [Activation](enum.Activation.html)
 pub trait ActivationInterface<'a, T: num_traits::float::Float> {
     fn calculate_value(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>>;
     fn calculate_derivative(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>>;
     fn is_valid(&'a self) -> Result<()>;
 }
 
-/// Set of Helper functions to refactor the Trait implementations for better readability
+// Set of Helper functions to refactor the Trait implementations for better readability
 
-/// Sigmoid function that takes in and returns a generic float type
+// Sigmoid function that takes in and returns a generic float type
 fn sigmoid<T: num_traits::float::Float>(x: T) -> T {
     T::from(1.0).unwrap() / (T::from(1.0).unwrap() + x.exp())
 }
-
+// ReLu function that takes in and returns a generic float type
 fn relu<T: num_traits::float::Float>(
     x: T,
     alpha: Option<T>,
@@ -141,6 +140,7 @@ fn relu<T: num_traits::float::Float>(
     }
 }
 
+// Derivative of ReLu function that takes in and returns a generic float type
 fn relu_derivative<T: num_traits::float::Float>(
     x: T,
     alpha: Option<T>,
@@ -175,7 +175,7 @@ fn relu_derivative<T: num_traits::float::Float>(
         }
     }
 }
-
+// Returns max value of a 2D Array of generic Float type along a given axis
 fn max_axis<T: num_traits::float::Float>(axis: usize, inputs: &'_ Array2<T>) -> Array2<T> {
     inputs
         .map_axis(Axis(axis), |x| {
@@ -215,6 +215,23 @@ fn stable_softmax<T: num_traits::float::Float>(axis: usize, inputs: &'_ Array2<T
 
 impl<'a, T: num_traits::float::Float> ActivationInterface<'a, T> for Activation<T> {
     /// Calculates activation values using multiple functions used in NN base ML models
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use rust_neural_network::Activation;
+    /// # use crate::rust_neural_network::ActivationInterface;
+    /// # use ndarray::prelude::*;
+    /// # use ndarray::Array;  
+    /// fn f(x: f32) -> f32 {
+    ///    1.0 / (1.0 + x.exp())
+    /// }
+    /// let activation = Activation::Sigmoid;
+    /// assert_eq!(
+    ///     activation.calculate_value(&array![[0.0]]).unwrap(),
+    ///     &array![[f(0.0)]]
+    /// );
+    /// ```
     fn calculate_value(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>> {
         match self {
             Activation::Sigmoid => Ok(inputs.mapv(sigmoid)),
@@ -229,6 +246,24 @@ impl<'a, T: num_traits::float::Float> ActivationInterface<'a, T> for Activation<
     }
 
     /// Calculates derivatives of activation values using multiple functions used in NN base ML models
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use rust_neural_network::Activation;
+    /// # use crate::rust_neural_network::ActivationInterface;
+    /// # use ndarray::prelude::*;
+    /// # use ndarray::Array;  
+    /// fn f(x: f32) -> f32 {
+    ///     let y = 1.0 / (1.0 + x.exp());
+    ///     y * (1.0 - y)
+    /// }
+    /// let activation = Activation::Sigmoid;
+    /// assert_eq!(
+    ///     activation.calculate_derivative(&array![[0.0]]).unwrap(),
+    ///     &array![[f(0.0)]]
+    /// );
+    /// ```
     fn calculate_derivative(&'a self, inputs: &'a Array2<T>) -> Result<Array2<T>> {
         match self {
             Activation::Sigmoid => Ok(inputs.mapv(|x| {
@@ -274,8 +309,7 @@ pub enum Loss {
     Entropy,
 }
 
-/// Functions supported by
-/// * rust_neural_network::Loss`
+/// Functions supported by [Loss](enum.Loss.html)
 pub trait LossInterface<'a, T: num_traits::float::Float> {
     fn calculate_value(
         &'a mut self,
@@ -393,8 +427,7 @@ pub enum Layer<T: num_traits::float::Float> {
         next_layer: Box<Option<Layer<T>>>,
     },
 }
-/// Functions supported by
-/// * rust_neural_network::Layer`
+/// Functions to configure a layer, supported by [Layer](enum.Layer.html)
 pub trait ConfigureLayer<'a, T: num_traits::float::Float> {
     fn create(&'a mut self) -> Result<()>;
 
@@ -874,7 +907,8 @@ pub enum Optimizer<'a, T: num_traits::float::Float> {
     },
 }
 
-trait OptimizerInterface<'a, T: num_traits::float::Float> {
+/// Functions supported by [Optimizer](enum.Optimizer.html)
+pub trait OptimizerInterface<'a, T: num_traits::float::Float> {
     fn create(&'a mut self) -> Result<()>;
 
     fn get_param(&'a self, key: String) -> Result<T>;
@@ -1000,7 +1034,8 @@ pub enum ModelConstructor<'a, T: num_traits::float::Float> {
     },
 }
 
-trait BuildModel<'a, T: num_traits::float::Float> {
+/// Functions to build a model, supported by [ModelConstructor](enum.ModelConstructor.html) and [Model](struct.Model.html)
+pub trait BuildModel<'a, T: num_traits::float::Float> {
     fn add(&'a mut self, new_layer: &'a mut Layer<T>) -> Result<()>;
     fn pop(&'a mut self) -> Result<()>;
     fn compile(
@@ -1189,7 +1224,8 @@ pub struct Model<'a, T: num_traits::float::Float> {
     pub history: Option<HashMap<usize, HashMap<String, T>>>,
 }
 
-trait UseModel<'a, T: num_traits::float::Float> {
+/// Functions to train the model and make predictions, supported by [ModelConstructor](enum.ModelConstructor.html) and [Model](struct.Model.html)
+pub trait UseModel<'a, T: num_traits::float::Float> {
     fn fit(
         &'a mut self,
         inputs: &'a Array2<T>,
