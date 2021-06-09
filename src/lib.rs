@@ -298,7 +298,7 @@ pub trait LossInterface<'a, T: num_traits::float::Float> {
         axis: usize,
     ) -> Result<Array1<T>>;
 
-    fn is_valid(&'a self) -> Result<()>;
+    fn is_valid(&'a self, _: T) -> Result<()>;
 }
 
 /// As of now library only supports MSE loss and not entropy.
@@ -372,7 +372,7 @@ impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
     }
 
     /// Validates if given activation function is a valid/supported
-    fn is_valid(&'a self) -> Result<()> {
+    fn is_valid(&'a self, _: T) -> Result<()> {
         match self {
             Loss::MeanSquareError => Ok(()),
             Loss::Entropy => Err(ModelError::MissingImplementation("Entropy")),
@@ -1001,19 +1001,17 @@ pub enum ModelConstructor<'a, T: num_traits::float::Float> {
 }
 
 trait BuildModel<'a, T: num_traits::float::Float> {
-    fn create(&'a mut self) -> Result<()>;
     fn add(&'a mut self, new_layer: &'a mut Layer<T>) -> Result<()>;
     fn pop(&'a mut self) -> Result<()>;
     fn compile(
-        &'a self,
-        optimizer: &Optimizer<'a, T>,
-        loss: &'a str,
+        &'a mut self,
+        optimizer: &'a Optimizer<'a, T>,
+        loss: &'a Loss,
         metrics: &[&'a str],
         validation_split: &'a T,
-    ) -> Result<Model<T>>;
+    ) -> Result<Model<'a, T>>;
 }
-
-impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for ModelConstructor<'a, T> {
+impl<'a, T: 'static + num_traits::float::Float> ModelConstructor<'a, T> {
     /// Validates and initializes a empty model constructor, and it can't be run after adding the layers.
     ///
     /// # Errors
@@ -1022,13 +1020,13 @@ impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for ModelConst
     ///     * if run with non-empty layers
     /// * `ModelError::InvalidModel`
     ///     * if input_dim == 0 or output_dim == 0
-    fn create(&'a mut self) -> Result<()> {
+    pub fn create(&'a mut self) -> Result<()> {
         match self {
             ModelConstructor::Sequential {
                 name: _,
                 layers,
                 input_dim,
-                output_dim:_,
+                output_dim: _,
             } => {
                 if let Some(layer_vec) = layers.to_owned() {
                     if !layer_vec.is_empty() {
@@ -1047,13 +1045,15 @@ impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for ModelConst
             }
         }
     }
+}
+impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for ModelConstructor<'a, T> {
     fn add(&'a mut self, new_layer: &'a mut Layer<T>) -> Result<()> {
         match self {
             ModelConstructor::Sequential {
                 name,
                 layers,
                 input_dim,
-                output_dim:_,
+                output_dim: _,
             } => {
                 let new_layer_shape = new_layer.shape();
                 let mut expected_input_dim = *input_dim;
@@ -1082,17 +1082,13 @@ impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for ModelConst
                             old_last_layer = Some(new_layers[new_layers_len - 1].to_owned())
                         };
 
-                        let _ = new_layer.set_layer(
-                            & old_last_layer,
-                            "below".to_string(),
-                            true,
-                        );
+                        let _ = new_layer.set_layer(&old_last_layer, "below".to_string(), true);
                         new_layers.push(new_layer.to_owned());
                         *self = ModelConstructor::Sequential {
-                            name:name,
-                            layers:Some(new_layers),
-                            input_dim:input_dim.to_owned(),
-                            output_dim:Some(new_layer_shape[1]),
+                            name,
+                            layers: Some(new_layers),
+                            input_dim: input_dim.to_owned(),
+                            output_dim: Some(new_layer_shape[1]),
                         };
                         Ok(())
                     }
@@ -1110,15 +1106,45 @@ impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for ModelConst
         ))
     }
     fn compile(
-        &'a self,
-        optimizer: &Optimizer<'a, T>,
-        loss: &'a str,
+        &'a mut self,
+        optimizer: &'a Optimizer<'a, T>,
+        loss: &'a Loss,
         metrics: &[&'a str],
         validation_split: &'a T,
-    ) -> Result<Model<T>> {
-        Err(ModelError::MissingImplementation(
-            "ModelConstructor::BuildModel::compile",
-        ))
+    ) -> Result<Model<'a, T>> {
+        match self {
+            ModelConstructor::Sequential {
+                name,
+                layers: _,
+                input_dim: _,
+                output_dim: _,
+            } => {
+                let allowed_metrics = vec!["accuracy", "val_accuracy", "loss", "val_loss"];
+                if optimizer.to_owned().is_valid().is_err()
+                    || loss.to_owned().is_valid(T::from(0.0).unwrap()).is_err()
+                    || !metrics
+                        .iter()
+                        .all(|x| allowed_metrics.iter().any(|y| y == x))
+                {
+                    return Err(ModelError::InvalidModel(
+                        "ModelConstructor::BuildModel::compile",
+                    ));
+                };
+                let model = Model {
+                    name,
+                    constructor: self.to_owned(),
+                    optimizer,
+                    loss_function: loss,
+                    metrics: metrics.to_vec(),
+                    validation_split: validation_split.to_owned(),
+                    history: None,
+                };
+                Ok(model)
+                //Err(ModelError::MissingImplementation(
+                //    "ModelConstructor::BuildModel::compile",
+                //))
+            }
+        }
     }
 }
 
@@ -1127,10 +1153,11 @@ impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for ModelConst
 pub struct Model<'a, T: num_traits::float::Float> {
     pub name: &'a str,
     pub constructor: ModelConstructor<'a, T>,
-    pub optimizer: Optimizer<'a, T>,
+    pub optimizer: &'a Optimizer<'a, T>,
+    pub loss_function: &'a Loss,
     pub metrics: Vec<&'a str>,
-    pub validation_split: &'a T,
-    pub history: HashMap<u32, HashMap<String, T>>,
+    pub validation_split: T,
+    pub history: Option<HashMap<u32, HashMap<String, T>>>,
 }
 
 trait UseModel<'a, T: num_traits::float::Float> {
@@ -1152,9 +1179,7 @@ trait UseModel<'a, T: num_traits::float::Float> {
 
 impl<'a, T: num_traits::float::Float> UseModel<'a, T> for Model<'a, T> {
     fn fit(&'a mut self, _inputs: &'a Array2<T>, _target: &'a Array2<T>) -> Result<()> {
-        Err(ModelError::MissingImplementation(
-            "Model::UseModel::fit",
-        ))
+        Err(ModelError::MissingImplementation("Model::UseModel::fit"))
     }
     fn predict(&'a self, _inputs: &'a Array2<T>) -> Result<Array1<T>> {
         Err(ModelError::MissingImplementation(
@@ -1184,32 +1209,22 @@ impl<'a, T: num_traits::float::Float> UseModel<'a, T> for Model<'a, T> {
     }
 }
 
-impl<'a, T: num_traits::float::Float> BuildModel<'a, T> for Model<'a, T> {
-    fn create(&'a mut self) -> Result<()> {
-        Err(ModelError::MissingImplementation(
-            "Model::BuildModel::create",
-        ))
-    }
-    fn add(&'a mut self, _layer: &'a mut Layer<T>) -> Result<()> {
-        Err(ModelError::MissingImplementation(
-            "Model::BuildModel::add",
-        ))
+impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for Model<'a, T> {
+    fn add(&'a mut self, layer: &'a mut Layer<T>) -> Result<()> {
+        self.constructor.add(layer)
     }
     fn pop(&'a mut self) -> Result<()> {
-        Err(ModelError::MissingImplementation(
-            "Model::BuildModel::pop",
-        ))
+        self.constructor.pop()
     }
     fn compile(
-        &'a self,
-        _optimizer: &Optimizer<'a, T>,
-        _loss: &'a str,
-        _metrics: &[&'a str],
-        _validation_split: &'a T,
-    ) -> Result<Model<T>> {
-        Err(ModelError::MissingImplementation(
-            "Model::BuildModel::compile",
-        ))
+        &'a mut self,
+        optimizer: &'a Optimizer<'a, T>,
+        loss: &'a Loss,
+        metrics: &[&'a str],
+        validation_split: &'a T,
+    ) -> Result<Model<'a, T>> {
+        self.constructor
+            .compile(optimizer, loss, metrics, validation_split)
     }
 }
 
