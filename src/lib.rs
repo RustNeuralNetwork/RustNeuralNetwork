@@ -61,6 +61,18 @@ pub enum ModelError<'a> {
 
     #[error("{0}: Feature is defined but not implemented")]
     MissingImplementation(&'a str),
+
+    #[error("{0}: ModelConstructor/Model can't be initialized if layers is not empty")]
+    ModelNotEmpty(&'a str),
+
+    #[error("{0}: ModelConstructor/Model doesn't support the operation with empty layers")]
+    ModelIsEmpty(&'a str),
+
+    #[error("{0}: Model/Model Constructor  not allowed")]
+    InvalidModel(&'a str),
+
+    #[error("{0}: Layer input given for Model/Model constructor is not valid")]
+    InvalidLayer(&'a str),
 }
 
 /// Result type for Model Errors errors.
@@ -286,7 +298,7 @@ pub trait LossInterface<'a, T: num_traits::float::Float> {
         axis: usize,
     ) -> Result<Array1<T>>;
 
-    fn is_valid(&'a self) -> Result<()>;
+    fn is_valid(&'a self, _: T) -> Result<()>;
 }
 
 /// As of now library only supports MSE loss and not entropy.
@@ -360,7 +372,7 @@ impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
     }
 
     /// Validates if given activation function is a valid/supported
-    fn is_valid(&'a self) -> Result<()> {
+    fn is_valid(&'a self, _: T) -> Result<()> {
         match self {
             Loss::MeanSquareError => Ok(()),
             Loss::Entropy => Err(ModelError::MissingImplementation("Entropy")),
@@ -808,8 +820,7 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
                             let error_derivative = loss_function
                                 .calculate_derivative(targets, &outputs)
                                 .unwrap();
-                            let _loss_updated =
-                                self.set_losses(activation_derivative * error_derivative);
+                            let _ = self.set_losses(activation_derivative * error_derivative);
                         } else {
                             //"updated my loss values using next layer's loss and weight values"
 
@@ -824,11 +835,9 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
                                     .unwrap()
                                     .t()
                                     .dot(&next_losses);
-                                let _loss_updated =
-                                    self.set_losses(activation_derivative * error_derivative);
+                                let _ = self.set_losses(activation_derivative * error_derivative);
                                 //"updated next layer's weights"
-                                let _updated_next_layer_weights =
-                                    layer_above_unwraped.update_weights(&outputs, optimizer);
+                                let _ = layer_above_unwraped.update_weights(&outputs, optimizer);
                             } else {
                                 return Err(ModelError::LossValuesNotSet(
                                     "ConfigureLayer::back_propagate",
@@ -959,10 +968,8 @@ impl<'a, T: 'static + num_traits::float::Float> OptimizerInterface<'a, T> for Op
         let losses_shape = losses.dim().to_owned();
         let inputs_shape = inputs.dim().to_owned();
         let weights_shape = weights.dim().to_owned();
-        if inputs_shape.1 == losses_shape.1
-            && weights_shape.0 == inputs_shape.0
-            && weights_shape.1 == losses_shape.1
-        {
+
+        if inputs_shape.1 == losses_shape.1 && weights_shape == (losses_shape.0, inputs_shape.0) {
             if let Ok(learning_rate) = self.get_param("learning_rate".to_string()) {
                 Ok(weights
                     + losses
@@ -987,49 +994,186 @@ pub enum ModelConstructor<'a, T: num_traits::float::Float> {
     /// Builds linear stack of layers into a model sequentially
     Sequential {
         name: &'a str,
-        layers: Vec<Layer<T>>,
+        layers: Option<Vec<Layer<T>>>,
+        input_dim: usize,
+        output_dim: Option<usize>,
     },
 }
 
 trait BuildModel<'a, T: num_traits::float::Float> {
-    fn create(&'a mut self) -> Result<()>;
-    fn add(&'a mut self, layer: &Layer<T>) -> Result<()>;
-    fn pop(&'a mut self, layer: &Layer<T>) -> Result<()>;
+    fn add(&'a mut self, new_layer: &'a mut Layer<T>) -> Result<()>;
+    fn pop(&'a mut self) -> Result<()>;
     fn compile(
-        &'a self,
-        optimizer: &Optimizer<'a, T>,
-        loss: &'a str,
+        &'a mut self,
+        optimizer: &'a Optimizer<'a, T>,
+        loss: &'a Loss,
         metrics: &[&'a str],
         validation_split: &'a T,
-    ) -> Result<Model<T>>;
+    ) -> Result<Model<'a, T>>;
 }
+impl<'a, T: 'static + num_traits::float::Float> ModelConstructor<'a, T> {
+    /// Validates and initializes a empty model constructor, and it can't be run after adding the layers.
+    ///
+    /// # Errors
+    ///
+    /// * `ModelError::ModelNotEmpty`
+    ///     * if run with non-empty layers
+    /// * `ModelError::InvalidModel`
+    ///     * if input_dim == 0 or output_dim == 0
+    pub fn create(&'a mut self) -> Result<()> {
+        match self {
+            ModelConstructor::Sequential {
+                name: _,
+                layers,
+                input_dim,
+                output_dim: _,
+            } => {
+                if let Some(layer_vec) = layers.to_owned() {
+                    if !layer_vec.is_empty() {
+                        return Err(ModelError::ModelNotEmpty(
+                            "ModelConstructor::BuildModel::create",
+                        ));
+                    }
+                };
+                if *input_dim == 0 {
+                    Err(ModelError::InvalidModel(
+                        "ModelConstructor::BuildModel::create",
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    }
+}
+impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for ModelConstructor<'a, T> {
+    fn add(&'a mut self, new_layer: &'a mut Layer<T>) -> Result<()> {
+        match self {
+            ModelConstructor::Sequential {
+                name,
+                layers,
+                input_dim,
+                output_dim: _,
+            } => {
+                let new_layer_shape = new_layer.shape();
+                let mut expected_input_dim = *input_dim;
+                let mut new_layers: Vec<Layer<T>> = Vec::new();
+                let mut new_layers_len = 0;
+                if let Some(layer_vec) = layers.to_owned() {
+                    if !layer_vec.is_empty() {
+                        new_layers_len = layer_vec.len();
+                        expected_input_dim = layer_vec[new_layers_len - 1].shape()[1];
+                        new_layers = layer_vec;
+                    }
+                };
+                if new_layer_shape[0] != expected_input_dim {
+                    if new_layer.create().is_err() {
+                        Err(ModelError::InvalidLayer(
+                            "ModelConstructor::BuildModel::add",
+                        ))
+                    } else {
+                        let mut old_last_layer = None;
+                        if new_layers_len > 0 {
+                            let _ = new_layers[new_layers_len - 1].set_layer(
+                                &Some(new_layer.to_owned()),
+                                "above".to_string(),
+                                true,
+                            );
+                            old_last_layer = Some(new_layers[new_layers_len - 1].to_owned())
+                        };
 
-impl<'a, T: num_traits::float::Float> BuildModel<'a, T> for ModelConstructor<'a, T> {
-    fn create(&'a mut self) -> Result<()> {
-        Err(ModelError::MissingImplementation(
-            "OptimizerInterface::create",
-        ))
+                        let _ = new_layer.set_layer(&old_last_layer, "below".to_string(), true);
+                        new_layers.push(new_layer.to_owned());
+                        *self = ModelConstructor::Sequential {
+                            name,
+                            layers: Some(new_layers),
+                            input_dim: input_dim.to_owned(),
+                            output_dim: Some(new_layer_shape[1]),
+                        };
+                        Ok(())
+                    }
+                } else {
+                    Err(ModelError::DimensionMismatch(
+                        "ModelConstructor::BuildModel::add",
+                    ))
+                }
+            }
+        }
     }
-    fn add(&'a mut self, _layer: &Layer<T>) -> Result<()> {
-        Err(ModelError::MissingImplementation(
-            "OptimizerInterface::create",
-        ))
-    }
-    fn pop(&'a mut self, _layer: &Layer<T>) -> Result<()> {
-        Err(ModelError::MissingImplementation(
-            "OptimizerInterface::create",
-        ))
+    fn pop(&'a mut self) -> Result<()> {
+        match self {
+            ModelConstructor::Sequential {
+                name,
+                layers,
+                input_dim,
+                output_dim: _,
+            } => {
+                if let Some(mut new_layers) = layers.to_owned() {
+                    if !new_layers.is_empty() {
+                        let old_last_layer = new_layers.pop();
+                        let new_layers_len = new_layers.len();
+                        if new_layers_len > 0 {
+                            let _ = new_layers[new_layers_len - 1].set_layer(
+                                &None,
+                                "below".to_string(),
+                                true,
+                            );
+                        };
+                        *self = ModelConstructor::Sequential {
+                            name,
+                            layers: Some(new_layers),
+                            input_dim: input_dim.to_owned(),
+                            output_dim: Some(old_last_layer.unwrap().shape()[0]),
+                        };
+                        return Ok(());
+                    }
+                };
+                Err(ModelError::InvalidModel(
+                    "ModelConstructor::BuildModel::compile",
+                ))
+            }
+        }
     }
     fn compile(
-        &'a self,
-        _optimizer: &Optimizer<'a, T>,
-        _loss: &'a str,
-        _metrics: &[&'a str],
-        _validation_split: &'a T,
-    ) -> Result<Model<T>> {
-        Err(ModelError::MissingImplementation(
-            "OptimizerInterface::create",
-        ))
+        &'a mut self,
+        optimizer: &'a Optimizer<'a, T>,
+        loss: &'a Loss,
+        metrics: &[&'a str],
+        validation_split: &'a T,
+    ) -> Result<Model<'a, T>> {
+        match self {
+            ModelConstructor::Sequential {
+                name,
+                layers: _,
+                input_dim: _,
+                output_dim: _,
+            } => {
+                let allowed_metrics = vec!["accuracy", "val_accuracy", "loss", "val_loss"];
+                if optimizer.to_owned().is_valid().is_err()
+                    || loss.to_owned().is_valid(T::from(0.0).unwrap()).is_err()
+                    || !metrics
+                        .iter()
+                        .all(|x| allowed_metrics.iter().any(|y| y == x))
+                {
+                    return Err(ModelError::InvalidModel(
+                        "ModelConstructor::BuildModel::compile",
+                    ));
+                };
+                let model = Model {
+                    name,
+                    constructor: self.to_owned(),
+                    optimizer,
+                    loss_function: loss,
+                    metrics: metrics.to_vec(),
+                    validation_split: validation_split.to_owned(),
+                    history: None,
+                };
+                Ok(model)
+                //Err(ModelError::MissingImplementation(
+                //    "ModelConstructor::BuildModel::compile",
+                //))
+            }
+        }
     }
 }
 
@@ -1038,18 +1182,24 @@ impl<'a, T: num_traits::float::Float> BuildModel<'a, T> for ModelConstructor<'a,
 pub struct Model<'a, T: num_traits::float::Float> {
     pub name: &'a str,
     pub constructor: ModelConstructor<'a, T>,
-    pub optimizer: Optimizer<'a, T>,
+    pub optimizer: &'a Optimizer<'a, T>,
+    pub loss_function: &'a Loss,
     pub metrics: Vec<&'a str>,
-    pub validation_split: &'a T,
-    pub history: HashMap<u32, HashMap<String, T>>,
+    pub validation_split: T,
+    pub history: Option<HashMap<usize, HashMap<String, T>>>,
 }
 
 trait UseModel<'a, T: num_traits::float::Float> {
-    fn fit(&'a mut self, inputs: &'a Array2<T>, target: &'a Array2<T>) -> Result<()>;
+    fn fit(
+        &'a mut self,
+        inputs: &'a Array2<T>,
+        target: &'a Array2<T>,
+        epoch: &'a usize,
+    ) -> Result<()>;
 
     fn predict(&'a self, inputs: &'a Array2<T>) -> Result<Array1<T>>;
 
-    fn history(&'a self, key: Option<String>) -> Result<HashMap<u32, HashMap<String, T>>>;
+    fn history(&'a self, key: Option<String>) -> Result<HashMap<usize, HashMap<String, T>>>;
 
     fn history_plot(&'a self, key: Option<String>) -> Result<()>;
 
@@ -1062,25 +1212,28 @@ trait UseModel<'a, T: num_traits::float::Float> {
 }
 
 impl<'a, T: num_traits::float::Float> UseModel<'a, T> for Model<'a, T> {
-    fn fit(&'a mut self, _inputs: &'a Array2<T>, _target: &'a Array2<T>) -> Result<()> {
-        Err(ModelError::MissingImplementation(
-            "OptimizerInterface::create",
-        ))
+    fn fit(
+        &'a mut self,
+        _inputs: &'a Array2<T>,
+        _target: &'a Array2<T>,
+        _epochs: &'a usize,
+    ) -> Result<()> {
+        Err(ModelError::MissingImplementation("Model::UseModel::fit"))
     }
     fn predict(&'a self, _inputs: &'a Array2<T>) -> Result<Array1<T>> {
         Err(ModelError::MissingImplementation(
-            "OptimizerInterface::create",
+            "Model::UseModel::predict",
         ))
     }
-    fn history(&'a self, _key: Option<String>) -> Result<HashMap<u32, HashMap<String, T>>> {
+    fn history(&'a self, _key: Option<String>) -> Result<HashMap<usize, HashMap<String, T>>> {
         Err(ModelError::MissingImplementation(
-            "OptimizerInterface::create",
+            "Model::UseModel::history",
         ))
     }
 
     fn history_plot(&'a self, _key: Option<String>) -> Result<()> {
         Err(ModelError::MissingImplementation(
-            "OptimizerInterface::create",
+            "Model::UseModel::history_plot",
         ))
     }
     fn metrics(
@@ -1090,37 +1243,27 @@ impl<'a, T: num_traits::float::Float> UseModel<'a, T> for Model<'a, T> {
         _key: Option<String>,
     ) -> Result<HashMap<String, T>> {
         Err(ModelError::MissingImplementation(
-            "OptimizerInterface::create",
+            "Model::UseModel::metrics",
         ))
     }
 }
 
-impl<'a, T: num_traits::float::Float> BuildModel<'a, T> for Model<'a, T> {
-    fn create(&'a mut self) -> Result<()> {
-        Err(ModelError::MissingImplementation(
-            "OptimizerInterface::create",
-        ))
+impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for Model<'a, T> {
+    fn add(&'a mut self, layer: &'a mut Layer<T>) -> Result<()> {
+        self.constructor.add(layer)
     }
-    fn add(&'a mut self, _layer: &Layer<T>) -> Result<()> {
-        Err(ModelError::MissingImplementation(
-            "OptimizerInterface::create",
-        ))
-    }
-    fn pop(&'a mut self, _layer: &Layer<T>) -> Result<()> {
-        Err(ModelError::MissingImplementation(
-            "OptimizerInterface::create",
-        ))
+    fn pop(&'a mut self) -> Result<()> {
+        self.constructor.pop()
     }
     fn compile(
-        &'a self,
-        _optimizer: &Optimizer<'a, T>,
-        _loss: &'a str,
-        _metrics: &[&'a str],
-        _validation_split: &'a T,
-    ) -> Result<Model<T>> {
-        Err(ModelError::MissingImplementation(
-            "OptimizerInterface::create",
-        ))
+        &'a mut self,
+        optimizer: &'a Optimizer<'a, T>,
+        loss: &'a Loss,
+        metrics: &[&'a str],
+        validation_split: &'a T,
+    ) -> Result<Model<'a, T>> {
+        self.constructor
+            .compile(optimizer, loss, metrics, validation_split)
     }
 }
 
