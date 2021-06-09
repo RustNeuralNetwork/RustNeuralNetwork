@@ -40,7 +40,8 @@ fn main() {
     match read_csv(test_path, train_path) {
         Ok((train_data, test_data)) => {
             println!("Success");
-            // let model: Model();
+            // start with model constructor
+            // let model: Model;
             // let mut layer: Layer<f32> = Layer::Dense {
             //     activation: Activation::Sigmoid,
             //     input_dim:  5,

@@ -1247,7 +1247,6 @@ impl<'a, T: num_traits::float::Float> UseModel<'a, T> for Model<'a, T> {
         ))
     }
 }
-
 impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for Model<'a, T> {
     fn add(&'a mut self, layer: &'a mut Layer<T>) -> Result<()> {
         self.constructor.add(layer)
