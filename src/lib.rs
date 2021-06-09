@@ -1186,7 +1186,7 @@ pub struct Model<'a, T: num_traits::float::Float> {
     pub loss_function: &'a Loss,
     pub metrics: Vec<&'a str>,
     pub validation_split: T,
-    pub history: Option<HashMap<u32, HashMap<String, T>>>,
+    pub history: Option<HashMap<usize, HashMap<String, T>>>,
 }
 
 trait UseModel<'a, T: num_traits::float::Float> {
@@ -1194,12 +1194,12 @@ trait UseModel<'a, T: num_traits::float::Float> {
         &'a mut self,
         inputs: &'a Array2<T>,
         target: &'a Array2<T>,
-        epoch: &'a u32,
+        epoch: &'a usize,
     ) -> Result<()>;
 
     fn predict(&'a self, inputs: &'a Array2<T>) -> Result<Array1<T>>;
 
-    fn history(&'a self, key: Option<String>) -> Result<HashMap<u32, HashMap<String, T>>>;
+    fn history(&'a self, key: Option<String>) -> Result<HashMap<usize, HashMap<String, T>>>;
 
     fn history_plot(&'a self, key: Option<String>) -> Result<()>;
 
@@ -1216,7 +1216,7 @@ impl<'a, T: num_traits::float::Float> UseModel<'a, T> for Model<'a, T> {
         &'a mut self,
         _inputs: &'a Array2<T>,
         _target: &'a Array2<T>,
-        _epochs: &'a u32,
+        _epochs: &'a usize,
     ) -> Result<()> {
         Err(ModelError::MissingImplementation("Model::UseModel::fit"))
     }
@@ -1225,7 +1225,7 @@ impl<'a, T: num_traits::float::Float> UseModel<'a, T> for Model<'a, T> {
             "Model::UseModel::predict",
         ))
     }
-    fn history(&'a self, _key: Option<String>) -> Result<HashMap<u32, HashMap<String, T>>> {
+    fn history(&'a self, _key: Option<String>) -> Result<HashMap<usize, HashMap<String, T>>> {
         Err(ModelError::MissingImplementation(
             "Model::UseModel::history",
         ))
