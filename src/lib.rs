@@ -1190,7 +1190,12 @@ pub struct Model<'a, T: num_traits::float::Float> {
 }
 
 trait UseModel<'a, T: num_traits::float::Float> {
-    fn fit(&'a mut self, inputs: &'a Array2<T>, target: &'a Array2<T>) -> Result<()>;
+    fn fit(
+        &'a mut self,
+        inputs: &'a Array2<T>,
+        target: &'a Array2<T>,
+        epoch: &'a u32,
+    ) -> Result<()>;
 
     fn predict(&'a self, inputs: &'a Array2<T>) -> Result<Array1<T>>;
 
@@ -1207,7 +1212,12 @@ trait UseModel<'a, T: num_traits::float::Float> {
 }
 
 impl<'a, T: num_traits::float::Float> UseModel<'a, T> for Model<'a, T> {
-    fn fit(&'a mut self, _inputs: &'a Array2<T>, _target: &'a Array2<T>) -> Result<()> {
+    fn fit(
+        &'a mut self,
+        _inputs: &'a Array2<T>,
+        _target: &'a Array2<T>,
+        _epochs: &'a u32,
+    ) -> Result<()> {
         Err(ModelError::MissingImplementation("Model::UseModel::fit"))
     }
     fn predict(&'a self, _inputs: &'a Array2<T>) -> Result<Array1<T>> {
