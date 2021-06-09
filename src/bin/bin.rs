@@ -2,6 +2,13 @@ extern crate rust_neural_network;
 use csv;
 use ndarray::Array2;
 use ndarray_csv::Array2Reader;
+use rust_neural_network::Activation;
+use rust_neural_network::BuildModel;
+use rust_neural_network::ConfigureLayer;
+use rust_neural_network::Layer;
+use rust_neural_network::Loss;
+use rust_neural_network::ModelConstructor;
+use rust_neural_network::Optimizer;
 use std::env;
 use std::error::Error;
 use std::ffi::OsString;
@@ -40,17 +47,69 @@ fn main() {
     match read_csv(test_path, train_path) {
         Ok((train_data, test_data)) => {
             println!("Success");
-            // start with model constructor
-            // let model: Model;
-            // let mut layer: Layer<f32> = Layer::Dense {
-            //     activation: Activation::Sigmoid,
-            //     input_dim:  5,
-            //     output_dim: 1,
-            //     weights: None,
-            //     loss_values: None,
-            //     prev_layer: Box::new(None),
-            //     next_layer: Box::new(None),
-            // };
+            let model_constructor: ModelConstructor<'_, f32> = ModelConstructor::Sequential {
+                name: "model",
+                layers: None,
+                input_dim: 28 * 28,
+                output_dim: Some(10),
+            };
+            match model_constructor.create() {
+                Ok(()) => {
+                    let mut layer1: Layer<f32> = Layer::Dense {
+                        activation: Activation::Sigmoid,
+                        input_dim: 28 * 28,
+                        output_dim: 100,
+                        weights: None,
+                        loss_values: None,
+                        prev_layer: Box::new(None),
+                        next_layer: Box::new(None),
+                    };
+                    let mut layer2: Layer<f32> = Layer::Dense {
+                        activation: Activation::Sigmoid,
+                        input_dim: 100,
+                        output_dim: 100,
+                        weights: None,
+                        loss_values: None,
+                        prev_layer: Box::new(None),
+                        next_layer: Box::new(None),
+                    };
+                    let mut layer3: Layer<f32> = Layer::Dense {
+                        activation: Activation::Sigmoid,
+                        input_dim: 100,
+                        output_dim: 10,
+                        weights: None,
+                        loss_values: None,
+                        prev_layer: Box::new(None),
+                        next_layer: Box::new(None),
+                    };
+                    layer1.set_layer(&Some(layer2), "above".to_string(), false);
+                    layer2.set_layer(&Some(layer1), "below".to_string(), false);
+                    layer2.set_layer(&Some(layer2), "above".to_string(), false);
+                    layer3.set_layer(&Some(layer2), "below".to_string(), false);
+                    model_constructor.add(&layer1);
+                    model_constructor.add(&layer2);
+                    model_constructor.add(&layer3);
+                    match model_constructor.compile(
+                        Optimizer::StochasticGradientDescent {
+                            learning_rate: &0.5,
+                            momentum: &None,
+                        },
+                        Loss::MeanSquareError,
+                        &[&"loss"],
+                        validation_split: &'a T,
+                    ) {
+                        Ok(model) => {}
+                        Err(err) => {
+                            println!("{}", err);
+                            process::exit(1);
+                        }
+                    }
+                }
+                Err(err) => {
+                    println!("{}", err);
+                    process::exit(1);
+                }
+            };
         }
         Err(err) => {
             println!("{}", err);
