@@ -1,3 +1,4 @@
 /target
 Cargo.lock
-/MNIST/MNIST
+/MNIST/*.csv
+.vscode
