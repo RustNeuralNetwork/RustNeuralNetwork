@@ -41,6 +41,10 @@ To run unit tests and doc tests in library, run:
 cargo test --lib
 ```
 
+```cmd
+cargo test --doc
+```
+
 To compile and run the binary executable MNIST classification example, you must first download the MNIST dataset [here](http://yann.lecun.com/exdb/mnist/) and place the four extracted ubyte files into the MNIST directory inside a new file labelled MNIST. The structure of your directory should look like:
 
 ```bash
