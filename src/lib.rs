@@ -79,7 +79,7 @@ pub enum ModelError<'a> {
 pub type Result<'a, T> = std::result::Result<T, ModelError<'a>>;
 
 /// Different types of activation functions supported by a NN Layer
-#[derive(Clone)]
+#[derive(Copy,Clone)]
 pub enum Activation<T: num_traits::float::Float> {
     /// Sigmoid Activation function
     Sigmoid,
@@ -300,7 +300,7 @@ impl<'a, T: num_traits::float::Float> ActivationInterface<'a, T> for Activation<
 }
 
 /// Different types of loss functions supported by a NN Model
-#[derive(Clone)]
+#[derive(Copy,Clone)]
 pub enum Loss {
     /// Mean Square Error loss function
     MeanSquareError,
@@ -645,7 +645,7 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
                 prev_layer: _,
                 next_layer: _,
             } => {
-                if let Some(wt) = weights.to_owned() {
+                if let Some(wt) = weights.take() {
                     Ok(wt)
                 } else {
                     Err(ModelError::WeightsNotInitialized("Layer::Dense"))
@@ -657,24 +657,16 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
     fn set_weights(&'a mut self, new_weights: Array2<T>) -> Result<()> {
         match self {
             Layer::Dense {
-                activation,
+                activation:_,
                 input_dim,
                 output_dim,
-                weights: _,
-                loss_values,
-                prev_layer,
-                next_layer,
+                weights,
+                loss_values:_,
+                prev_layer:_,
+                next_layer:_,
             } => {
                 if new_weights.shape()[0] == *output_dim && new_weights.shape()[1] == *input_dim {
-                    *self = Layer::Dense {
-                        activation: activation.to_owned(),
-                        input_dim: input_dim.to_owned(),
-                        output_dim: output_dim.to_owned(),
-                        weights: Some(new_weights),
-                        loss_values: loss_values.to_owned(),
-                        prev_layer: prev_layer.to_owned(),
-                        next_layer: next_layer.to_owned(),
-                    };
+                    *weights = Some(new_weights);
                     Ok(())
                 } else {
                     Err(ModelError::DimensionMismatch("Layer::Dense"))
@@ -743,7 +735,7 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
                 prev_layer: _,
                 next_layer: _,
             } => {
-                if let Some(lv) = loss_values.to_owned() {
+                if let Some(lv) = loss_values.take() {
                     Ok(lv)
                 } else {
                     Err(ModelError::LossValuesNotSet("Layer::Dense"))
@@ -755,24 +747,16 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
     fn set_losses(&'a mut self, new_losses: Array2<T>) -> Result<()> {
         match self {
             Layer::Dense {
-                activation,
-                input_dim,
+                activation:_,
+                input_dim:_,
                 output_dim,
-                weights,
-                loss_values: _,
-                prev_layer,
-                next_layer,
+                weights:_,
+                loss_values,
+                prev_layer:_,
+                next_layer:_,
             } => {
                 if new_losses.shape()[0] == *output_dim {
-                    *self = Layer::Dense {
-                        activation: activation.to_owned(),
-                        input_dim: input_dim.to_owned(),
-                        output_dim: output_dim.to_owned(),
-                        weights: weights.to_owned(),
-                        loss_values: Some(new_losses),
-                        prev_layer: prev_layer.to_owned(),
-                        next_layer: next_layer.to_owned(),
-                    };
+                    *loss_values = Some(new_losses);
                     Ok(())
                 } else {
                     Err(ModelError::DimensionMismatch("Layer::Dense"))
@@ -809,39 +793,25 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
     ) -> Result<()> {
         match self {
             Layer::Dense {
-                activation,
+                activation:_,
                 input_dim,
                 output_dim,
-                weights,
-                loss_values,
+                weights:_,
+                loss_values:_,
                 prev_layer,
                 next_layer,
             } => {
                 if key == "below" {
-                    *self = Layer::Dense {
-                        activation: activation.to_owned(),
-                        input_dim: layer.to_owned().unwrap().shape()[1],
-                        output_dim: output_dim.to_owned(),
-                        weights: weights.to_owned(),
-                        loss_values: loss_values.to_owned(),
-                        prev_layer: Box::new(layer.to_owned()),
-                        next_layer: next_layer.to_owned(),
-                    };
+                    *prev_layer = Box::new(layer.to_owned());
+                    *input_dim = layer.to_owned().unwrap().shape()[1];
                     if reset_weights {
                         self.create()
                     } else {
                         Ok(())
                     }
                 } else if key == "above" {
-                    *self = Layer::Dense {
-                        activation: activation.to_owned(),
-                        input_dim: input_dim.to_owned(),
-                        output_dim: layer.to_owned().unwrap().shape()[1],
-                        weights: weights.to_owned(),
-                        loss_values: loss_values.to_owned(),
-                        prev_layer: prev_layer.to_owned(),
-                        next_layer: Box::new(layer.to_owned()),
-                    };
+                    *output_dim = layer.to_owned().unwrap().shape()[1];
+                    *next_layer = Box::new(layer.to_owned());
                     if reset_weights {
                         self.create()
                     } else {
@@ -1043,14 +1013,11 @@ impl<'a, T: 'static + num_traits::float::Float> OptimizerInterface<'a, T> for Op
         if self.is_valid().is_ok() {
             match self {
                 Optimizer::StochasticGradientDescent {
-                    learning_rate: _,
-                    momentum,
+                    learning_rate,
+                    momentum:_,
                 } => match key.as_str() {
                     "learning_rate" => {
-                        *self = Optimizer::StochasticGradientDescent {
-                            learning_rate: value,
-                            momentum,
-                        };
+                        *learning_rate = value;
                         Ok(())
                     }
                     _ => Err(ModelError::ValueNotInRange(
@@ -1135,7 +1102,7 @@ impl<'a, T: 'static + num_traits::float::Float> ModelConstructor<'a, T> {
                 input_dim,
                 output_dim: _,
             } => {
-                if let Some(layer_vec) = layers.to_owned() {
+                if let Some(layer_vec) = layers.take() {
                     if !layer_vec.is_empty() {
                         return Err(ModelError::ModelNotEmpty(
                             "ModelConstructor::BuildModel::create",
@@ -1157,16 +1124,16 @@ impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for ModelConst
     fn add(&'a mut self, new_layer: &'a mut Layer<T>) -> Result<()> {
         match self {
             ModelConstructor::Sequential {
-                name,
+                name:_,
                 layers,
                 input_dim,
-                output_dim: _,
+                output_dim,
             } => {
                 let new_layer_shape = new_layer.shape();
                 let mut expected_input_dim = *input_dim;
                 let mut new_layers: Vec<Layer<T>> = Vec::new();
                 let mut new_layers_len = 0;
-                if let Some(layer_vec) = layers.to_owned() {
+                if let Some(layer_vec) = layers.take() {
                     if !layer_vec.is_empty() {
                         new_layers_len = layer_vec.len();
                         expected_input_dim = layer_vec[new_layers_len - 1].shape()[1];
@@ -1191,12 +1158,8 @@ impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for ModelConst
 
                         let _ = new_layer.set_layer(&old_last_layer, "below".to_string(), true);
                         new_layers.push(new_layer.to_owned());
-                        *self = ModelConstructor::Sequential {
-                            name,
-                            layers: Some(new_layers),
-                            input_dim: input_dim.to_owned(),
-                            output_dim: Some(new_layer_shape[1]),
-                        };
+                        *layers = Some(new_layers);
+                        *output_dim = Some(new_layer_shape[1]);
                         Ok(())
                     }
                 } else {
@@ -1210,12 +1173,12 @@ impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for ModelConst
     fn pop(&'a mut self) -> Result<()> {
         match self {
             ModelConstructor::Sequential {
-                name,
+                name:_,
                 layers,
-                input_dim,
-                output_dim: _,
+                input_dim:_,
+                output_dim,
             } => {
-                if let Some(mut new_layers) = layers.to_owned() {
+                if let Some(mut new_layers) = layers.take() {
                     if !new_layers.is_empty() {
                         let old_last_layer = new_layers.pop();
                         let new_layers_len = new_layers.len();
@@ -1226,12 +1189,8 @@ impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for ModelConst
                                 true,
                             );
                         };
-                        *self = ModelConstructor::Sequential {
-                            name,
-                            layers: Some(new_layers),
-                            input_dim: input_dim.to_owned(),
-                            output_dim: Some(old_last_layer.unwrap().shape()[0]),
-                        };
+                        *output_dim = Some(old_last_layer.unwrap().shape()[0]);
+                        *layers = Some(new_layers);
                         return Ok(());
                     }
                 };
