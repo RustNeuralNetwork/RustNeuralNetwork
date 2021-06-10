@@ -35,6 +35,12 @@ To compile library code, run:
 cargo build --lib
 ```
 
+To run clippy :
+
+```cmd
+cargo clippy --lib
+```
+
 To run unit tests and doc tests in library, run:
 
 ```cmd
