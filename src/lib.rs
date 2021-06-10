@@ -1770,4 +1770,48 @@ mod tests {
             true
         );
     }
+
+    #[test]
+    fn test_model_constructor() {
+        let mut model_constructor: ModelConstructor<'_, f32> = ModelConstructor::Sequential {
+            name: "model",
+            layers: None,
+            input_dim: 28 * 28,
+            output_dim: Some(10),
+        };
+        let _ = model_constructor.create();
+
+        let mut layer1: Layer<f32> = Layer::Dense {
+            activation: Activation::Sigmoid,
+            input_dim: 28 * 28,
+            output_dim: 100,
+            weights: None,
+            loss_values: None,
+            prev_layer: Box::new(None),
+            next_layer: Box::new(None),
+        };
+        let mut layer2: Layer<f32> = Layer::Dense {
+            activation: Activation::Sigmoid,
+            input_dim: 100,
+            output_dim: 100,
+            weights: None,
+            loss_values: None,
+            prev_layer: Box::new(None),
+            next_layer: Box::new(None),
+        };
+        let mut layer3: Layer<f32> = Layer::Dense {
+            activation: Activation::Sigmoid,
+            input_dim: 100,
+            output_dim: 10,
+            weights: None,
+            loss_values: None,
+            prev_layer: Box::new(None),
+            next_layer: Box::new(None),
+        };
+    
+        let _ = layer1.set_layer(&Some(layer2.to_owned()), "above".to_string(), false);
+        let _ = layer2.set_layer(&Some(layer1.to_owned()), "below".to_string(), false);
+        let _ = layer2.set_layer(&Some(layer2.to_owned()), "above".to_string(), false);
+        let _ = layer3.set_layer(&Some(layer2.to_owned()), "below".to_string(), false);
+    }
 }
