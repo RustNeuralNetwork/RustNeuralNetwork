@@ -339,6 +339,25 @@ pub trait LossInterface<'a, T: num_traits::float::Float> {
 impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
     /// Calculates loss values using multiple functions used in NN base ML models
     ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use rust_neural_network::Loss;
+    /// # use crate::rust_neural_network::LossInterface;
+    /// # use ndarray::prelude::*;
+    /// # use ndarray::Array;  
+    /// let mut loss_function = Loss::MeanSquareError;
+    /// assert_eq!(
+    ///     loss_function
+    ///         .calculate_value(
+    ///             &array![[0.0, 1.0], [1.0, 0.0]],
+    ///             &array![[1.0, 1.0], [0.0, 1.0]]
+    ///         )
+    ///         .unwrap(),
+    ///     &array![[1.0, 0.0], [1.0, 1.0]]
+    /// );
+    /// ```
+    ///
     /// # Errors
     ///
     /// * `ModelError::MissingImplementation`
@@ -349,12 +368,31 @@ impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
         y_pred: &'a Array2<T>,
     ) -> Result<Array2<T>> {
         match self {
-            Loss::MeanSquareError => Ok((y_pred - y_true).mapv(|x| (x * x))),
+            Loss::MeanSquareError => Ok((y_true - y_pred).mapv(|x| (x * x))),
             Loss::Entropy => Err(ModelError::MissingImplementation("Entropy")),
         }
     }
 
     /// Calculates loss values using multiple functions used in NN base ML models
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use rust_neural_network::Loss;
+    /// # use crate::rust_neural_network::LossInterface;
+    /// # use ndarray::prelude::*;
+    /// # use ndarray::Array;  
+    /// let mut loss_function = Loss::MeanSquareError;
+    /// assert_eq!(
+    ///     loss_function
+    ///         .calculate_derivative(
+    ///             &array![[0.0, 1.0], [1.0, 0.0]],
+    ///             &array![[1.0, 1.0], [0.0, 1.0]]
+    ///         )
+    ///         .unwrap(),
+    ///     &array![[-1.0, 0.0], [1.0, -1.0]]
+    /// );
+    /// ```
     ///
     /// # Errors
     ///
@@ -366,7 +404,7 @@ impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
         y_pred: &'a Array2<T>,
     ) -> Result<Array2<T>> {
         match self {
-            Loss::MeanSquareError => Ok(y_pred - y_true),
+            Loss::MeanSquareError => Ok(y_true - y_pred),
             Loss::Entropy => Err(ModelError::MissingImplementation("Entropy")),
         }
     }
@@ -380,7 +418,7 @@ impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
     fn mean(&'a mut self, y_true: &'a Array2<T>, y_pred: &'a Array2<T>) -> Result<T> {
         match self {
             Loss::MeanSquareError => {
-                let mse = (y_pred - y_true).mapv(|x| (x * x));
+                let mse = (y_true - y_pred).mapv(|x| (x * x));
                 Ok(mse.sum() / T::from(mse.len()).unwrap())
             }
             Loss::Entropy => Err(ModelError::MissingImplementation("Entropy")),
@@ -388,6 +426,24 @@ impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
     }
 
     /// Calculates mean of loss values over given axis using multiple functions used in NN base ML models
+    ///
+    /// ```
+    /// # use rust_neural_network::Loss;
+    /// # use crate::rust_neural_network::LossInterface;
+    /// # use ndarray::prelude::*;
+    /// # use ndarray::Array;  
+    /// let mut loss_function = Loss::MeanSquareError;
+    /// assert_eq!(
+    ///     loss_function
+    ///         .mean_axis(
+    ///             &array![[0.0, 1.0], [1.0, 0.0]],
+    ///             &array![[1.0, 1.0], [0.0, 1.0]],
+    ///             0
+    ///         )
+    ///         .unwrap(),
+    ///     &array![1.0, 0.5]
+    /// );
+    /// ```
     ///
     /// # Errors
     ///
@@ -400,12 +456,28 @@ impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
         axis: usize,
     ) -> Result<Array1<T>> {
         match self {
-            Loss::MeanSquareError => Ok(mean_axis(axis, &(y_pred - y_true).mapv(|x| (x * x)))),
+            Loss::MeanSquareError => Ok(mean_axis(axis, &(y_true - y_pred).mapv(|x| (x * x)))),
             Loss::Entropy => Err(ModelError::MissingImplementation("Entropy")),
         }
     }
 
     /// Validates if given activation function is a valid/supported
+    ///
+    /// ```
+    /// # use rust_neural_network::Loss;
+    /// # use crate::rust_neural_network::LossInterface;
+    /// # use ndarray::prelude::*;
+    /// # use ndarray::Array;  
+    /// let mut loss_function = Loss::MeanSquareError;
+    /// assert_eq!(loss_function.is_valid(0.0).is_ok(),true);
+    /// let mut loss_function = Loss::Entropy;
+    /// assert_eq!(loss_function.is_valid(0.0).is_err(),true);
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// * `ModelError::MissingImplementation`
+    ///     * if variant `Loss::Entropy` is used
     fn is_valid(&'a self, _: T) -> Result<()> {
         match self {
             Loss::MeanSquareError => Ok(()),
@@ -1653,6 +1725,90 @@ mod tests {
                     f(3.0, alpha, max_value, threshold)
                 ]
             ]
+        );
+    }
+
+    #[test]
+    fn test_mse_loss() {
+        let mut loss_function = Loss::MeanSquareError;
+        assert_eq!(
+            loss_function
+                .calculate_value(
+                    &array![[0.0, 1.0], [1.0, 0.0]],
+                    &array![[1.0, 1.0], [0.0, 1.0]]
+                )
+                .unwrap(),
+            &array![[1.0, 0.0], [1.0, 1.0]]
+        );
+        assert_eq!(
+            loss_function
+                .calculate_derivative(
+                    &array![[0.0, 1.0], [1.0, 0.0]],
+                    &array![[1.0, 1.0], [0.0, 1.0]]
+                )
+                .unwrap(),
+            &array![[-1.0, 0.0], [1.0, -1.0]]
+        );
+        assert_eq!(
+            loss_function
+                .mean(
+                    &array![[0.0, 1.0], [1.0, 0.0]],
+                    &array![[1.0, 1.0], [0.0, 1.0]]
+                )
+                .unwrap(),
+            0.75
+        );
+        assert_eq!(
+            loss_function
+                .mean_axis(
+                    &array![[0.0, 1.0], [1.0, 0.0]],
+                    &array![[1.0, 1.0], [0.0, 1.0]],
+                    0
+                )
+                .unwrap(),
+            &array![1.0, 0.5]
+        )
+    }
+
+    #[test]
+    fn test_entropy_loss() {
+        let mut loss_function = Loss::Entropy;
+        assert_eq!(
+            loss_function
+                .calculate_value(
+                    &array![[0.0, 1.0], [1.0, 0.0]],
+                    &array![[1.0, 1.0], [0.0, 1.0]]
+                )
+                .is_err(),
+            true
+        );
+        assert_eq!(
+            loss_function
+                .calculate_derivative(
+                    &array![[0.0, 1.0], [1.0, 0.0]],
+                    &array![[1.0, 1.0], [0.0, 1.0]]
+                )
+                .is_err(),
+            true
+        );
+        assert_eq!(
+            loss_function
+                .mean(
+                    &array![[0.0, 1.0], [1.0, 0.0]],
+                    &array![[1.0, 1.0], [0.0, 1.0]]
+                )
+                .is_err(),
+            true
+        );
+        assert_eq!(
+            loss_function
+                .mean_axis(
+                    &array![[0.0, 1.0], [1.0, 0.0]],
+                    &array![[1.0, 1.0], [0.0, 1.0]],
+                    0
+                )
+                .is_err(),
+            true
         );
     }
 }
