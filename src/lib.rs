@@ -79,7 +79,7 @@ pub enum ModelError<'a> {
 pub type Result<'a, T> = std::result::Result<T, ModelError<'a>>;
 
 /// Different types of activation functions supported by a NN Layer
-#[derive(Clone)]
+#[derive(Copy,Clone)]
 pub enum Activation<T: num_traits::float::Float> {
     /// Sigmoid Activation function
     Sigmoid,
@@ -300,7 +300,7 @@ impl<'a, T: num_traits::float::Float> ActivationInterface<'a, T> for Activation<
 }
 
 /// Different types of loss functions supported by a NN Model
-#[derive(Clone)]
+#[derive(Copy,Clone)]
 pub enum Loss {
     /// Mean Square Error loss function
     MeanSquareError,
@@ -339,6 +339,25 @@ pub trait LossInterface<'a, T: num_traits::float::Float> {
 impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
     /// Calculates loss values using multiple functions used in NN base ML models
     ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use rust_neural_network::Loss;
+    /// # use crate::rust_neural_network::LossInterface;
+    /// # use ndarray::prelude::*;
+    /// # use ndarray::Array;  
+    /// let mut loss_function = Loss::MeanSquareError;
+    /// assert_eq!(
+    ///     loss_function
+    ///         .calculate_value(
+    ///             &array![[0.0, 1.0], [1.0, 0.0]],
+    ///             &array![[1.0, 1.0], [0.0, 1.0]]
+    ///         )
+    ///         .unwrap(),
+    ///     &array![[1.0, 0.0], [1.0, 1.0]]
+    /// );
+    /// ```
+    ///
     /// # Errors
     ///
     /// * `ModelError::MissingImplementation`
@@ -349,12 +368,31 @@ impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
         y_pred: &'a Array2<T>,
     ) -> Result<Array2<T>> {
         match self {
-            Loss::MeanSquareError => Ok((y_pred - y_true).mapv(|x| (x * x))),
+            Loss::MeanSquareError => Ok((y_true - y_pred).mapv(|x| (x * x))),
             Loss::Entropy => Err(ModelError::MissingImplementation("Entropy")),
         }
     }
 
     /// Calculates loss values using multiple functions used in NN base ML models
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use rust_neural_network::Loss;
+    /// # use crate::rust_neural_network::LossInterface;
+    /// # use ndarray::prelude::*;
+    /// # use ndarray::Array;  
+    /// let mut loss_function = Loss::MeanSquareError;
+    /// assert_eq!(
+    ///     loss_function
+    ///         .calculate_derivative(
+    ///             &array![[0.0, 1.0], [1.0, 0.0]],
+    ///             &array![[1.0, 1.0], [0.0, 1.0]]
+    ///         )
+    ///         .unwrap(),
+    ///     &array![[-1.0, 0.0], [1.0, -1.0]]
+    /// );
+    /// ```
     ///
     /// # Errors
     ///
@@ -366,7 +404,7 @@ impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
         y_pred: &'a Array2<T>,
     ) -> Result<Array2<T>> {
         match self {
-            Loss::MeanSquareError => Ok(y_pred - y_true),
+            Loss::MeanSquareError => Ok(y_true - y_pred),
             Loss::Entropy => Err(ModelError::MissingImplementation("Entropy")),
         }
     }
@@ -380,7 +418,7 @@ impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
     fn mean(&'a mut self, y_true: &'a Array2<T>, y_pred: &'a Array2<T>) -> Result<T> {
         match self {
             Loss::MeanSquareError => {
-                let mse = (y_pred - y_true).mapv(|x| (x * x));
+                let mse = (y_true - y_pred).mapv(|x| (x * x));
                 Ok(mse.sum() / T::from(mse.len()).unwrap())
             }
             Loss::Entropy => Err(ModelError::MissingImplementation("Entropy")),
@@ -388,6 +426,24 @@ impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
     }
 
     /// Calculates mean of loss values over given axis using multiple functions used in NN base ML models
+    ///
+    /// ```
+    /// # use rust_neural_network::Loss;
+    /// # use crate::rust_neural_network::LossInterface;
+    /// # use ndarray::prelude::*;
+    /// # use ndarray::Array;  
+    /// let mut loss_function = Loss::MeanSquareError;
+    /// assert_eq!(
+    ///     loss_function
+    ///         .mean_axis(
+    ///             &array![[0.0, 1.0], [1.0, 0.0]],
+    ///             &array![[1.0, 1.0], [0.0, 1.0]],
+    ///             0
+    ///         )
+    ///         .unwrap(),
+    ///     &array![1.0, 0.5]
+    /// );
+    /// ```
     ///
     /// # Errors
     ///
@@ -400,12 +456,28 @@ impl<'a, T: num_traits::float::Float> LossInterface<'a, T> for Loss {
         axis: usize,
     ) -> Result<Array1<T>> {
         match self {
-            Loss::MeanSquareError => Ok(mean_axis(axis, &(y_pred - y_true).mapv(|x| (x * x)))),
+            Loss::MeanSquareError => Ok(mean_axis(axis, &(y_true - y_pred).mapv(|x| (x * x)))),
             Loss::Entropy => Err(ModelError::MissingImplementation("Entropy")),
         }
     }
 
     /// Validates if given activation function is a valid/supported
+    ///
+    /// ```
+    /// # use rust_neural_network::Loss;
+    /// # use crate::rust_neural_network::LossInterface;
+    /// # use ndarray::prelude::*;
+    /// # use ndarray::Array;  
+    /// let mut loss_function = Loss::MeanSquareError;
+    /// assert_eq!(loss_function.is_valid(0.0).is_ok(),true);
+    /// let mut loss_function = Loss::Entropy;
+    /// assert_eq!(loss_function.is_valid(0.0).is_err(),true);
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// * `ModelError::MissingImplementation`
+    ///     * if variant `Loss::Entropy` is used
     fn is_valid(&'a self, _: T) -> Result<()> {
         match self {
             Loss::MeanSquareError => Ok(()),
@@ -573,7 +645,7 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
                 prev_layer: _,
                 next_layer: _,
             } => {
-                if let Some(wt) = weights.to_owned() {
+                if let Some(wt) = weights.take() {
                     Ok(wt)
                 } else {
                     Err(ModelError::WeightsNotInitialized("Layer::Dense"))
@@ -585,24 +657,16 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
     fn set_weights(&'a mut self, new_weights: Array2<T>) -> Result<()> {
         match self {
             Layer::Dense {
-                activation,
+                activation:_,
                 input_dim,
                 output_dim,
-                weights: _,
-                loss_values,
-                prev_layer,
-                next_layer,
+                weights,
+                loss_values:_,
+                prev_layer:_,
+                next_layer:_,
             } => {
                 if new_weights.shape()[0] == *output_dim && new_weights.shape()[1] == *input_dim {
-                    *self = Layer::Dense {
-                        activation: activation.to_owned(),
-                        input_dim: input_dim.to_owned(),
-                        output_dim: output_dim.to_owned(),
-                        weights: Some(new_weights),
-                        loss_values: loss_values.to_owned(),
-                        prev_layer: prev_layer.to_owned(),
-                        next_layer: next_layer.to_owned(),
-                    };
+                    *weights = Some(new_weights);
                     Ok(())
                 } else {
                     Err(ModelError::DimensionMismatch("Layer::Dense"))
@@ -671,7 +735,7 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
                 prev_layer: _,
                 next_layer: _,
             } => {
-                if let Some(lv) = loss_values.to_owned() {
+                if let Some(lv) = loss_values.take() {
                     Ok(lv)
                 } else {
                     Err(ModelError::LossValuesNotSet("Layer::Dense"))
@@ -683,24 +747,16 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
     fn set_losses(&'a mut self, new_losses: Array2<T>) -> Result<()> {
         match self {
             Layer::Dense {
-                activation,
-                input_dim,
+                activation:_,
+                input_dim:_,
                 output_dim,
-                weights,
-                loss_values: _,
-                prev_layer,
-                next_layer,
+                weights:_,
+                loss_values,
+                prev_layer:_,
+                next_layer:_,
             } => {
                 if new_losses.shape()[0] == *output_dim {
-                    *self = Layer::Dense {
-                        activation: activation.to_owned(),
-                        input_dim: input_dim.to_owned(),
-                        output_dim: output_dim.to_owned(),
-                        weights: weights.to_owned(),
-                        loss_values: Some(new_losses),
-                        prev_layer: prev_layer.to_owned(),
-                        next_layer: next_layer.to_owned(),
-                    };
+                    *loss_values = Some(new_losses);
                     Ok(())
                 } else {
                     Err(ModelError::DimensionMismatch("Layer::Dense"))
@@ -737,39 +793,25 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
     ) -> Result<()> {
         match self {
             Layer::Dense {
-                activation,
+                activation:_,
                 input_dim,
                 output_dim,
-                weights,
-                loss_values,
+                weights:_,
+                loss_values:_,
                 prev_layer,
                 next_layer,
             } => {
                 if key == "below" {
-                    *self = Layer::Dense {
-                        activation: activation.to_owned(),
-                        input_dim: layer.to_owned().unwrap().shape()[1],
-                        output_dim: output_dim.to_owned(),
-                        weights: weights.to_owned(),
-                        loss_values: loss_values.to_owned(),
-                        prev_layer: Box::new(layer.to_owned()),
-                        next_layer: next_layer.to_owned(),
-                    };
+                    *prev_layer = Box::new(layer.to_owned());
+                    *input_dim = layer.to_owned().unwrap().shape()[1];
                     if reset_weights {
                         self.create()
                     } else {
                         Ok(())
                     }
                 } else if key == "above" {
-                    *self = Layer::Dense {
-                        activation: activation.to_owned(),
-                        input_dim: input_dim.to_owned(),
-                        output_dim: layer.to_owned().unwrap().shape()[1],
-                        weights: weights.to_owned(),
-                        loss_values: loss_values.to_owned(),
-                        prev_layer: prev_layer.to_owned(),
-                        next_layer: Box::new(layer.to_owned()),
-                    };
+                    *output_dim = layer.to_owned().unwrap().shape()[1];
+                    *next_layer = Box::new(layer.to_owned());
                     if reset_weights {
                         self.create()
                     } else {
@@ -971,14 +1013,11 @@ impl<'a, T: 'static + num_traits::float::Float> OptimizerInterface<'a, T> for Op
         if self.is_valid().is_ok() {
             match self {
                 Optimizer::StochasticGradientDescent {
-                    learning_rate: _,
-                    momentum,
+                    learning_rate,
+                    momentum:_,
                 } => match key.as_str() {
                     "learning_rate" => {
-                        *self = Optimizer::StochasticGradientDescent {
-                            learning_rate: value,
-                            momentum,
-                        };
+                        *learning_rate = value;
                         Ok(())
                     }
                     _ => Err(ModelError::ValueNotInRange(
@@ -1063,7 +1102,7 @@ impl<'a, T: 'static + num_traits::float::Float> ModelConstructor<'a, T> {
                 input_dim,
                 output_dim: _,
             } => {
-                if let Some(layer_vec) = layers.to_owned() {
+                if let Some(layer_vec) = layers.take() {
                     if !layer_vec.is_empty() {
                         return Err(ModelError::ModelNotEmpty(
                             "ModelConstructor::BuildModel::create",
@@ -1085,16 +1124,16 @@ impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for ModelConst
     fn add(&'a mut self, new_layer: &'a mut Layer<T>) -> Result<()> {
         match self {
             ModelConstructor::Sequential {
-                name,
+                name:_,
                 layers,
                 input_dim,
-                output_dim: _,
+                output_dim,
             } => {
                 let new_layer_shape = new_layer.shape();
                 let mut expected_input_dim = *input_dim;
                 let mut new_layers: Vec<Layer<T>> = Vec::new();
                 let mut new_layers_len = 0;
-                if let Some(layer_vec) = layers.to_owned() {
+                if let Some(layer_vec) = layers.take() {
                     if !layer_vec.is_empty() {
                         new_layers_len = layer_vec.len();
                         expected_input_dim = layer_vec[new_layers_len - 1].shape()[1];
@@ -1119,12 +1158,8 @@ impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for ModelConst
 
                         let _ = new_layer.set_layer(&old_last_layer, "below".to_string(), true);
                         new_layers.push(new_layer.to_owned());
-                        *self = ModelConstructor::Sequential {
-                            name,
-                            layers: Some(new_layers),
-                            input_dim: input_dim.to_owned(),
-                            output_dim: Some(new_layer_shape[1]),
-                        };
+                        *layers = Some(new_layers);
+                        *output_dim = Some(new_layer_shape[1]);
                         Ok(())
                     }
                 } else {
@@ -1138,12 +1173,12 @@ impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for ModelConst
     fn pop(&'a mut self) -> Result<()> {
         match self {
             ModelConstructor::Sequential {
-                name,
+                name:_,
                 layers,
-                input_dim,
-                output_dim: _,
+                input_dim:_,
+                output_dim,
             } => {
-                if let Some(mut new_layers) = layers.to_owned() {
+                if let Some(mut new_layers) = layers.take() {
                     if !new_layers.is_empty() {
                         let old_last_layer = new_layers.pop();
                         let new_layers_len = new_layers.len();
@@ -1154,12 +1189,8 @@ impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for ModelConst
                                 true,
                             );
                         };
-                        *self = ModelConstructor::Sequential {
-                            name,
-                            layers: Some(new_layers),
-                            input_dim: input_dim.to_owned(),
-                            output_dim: Some(old_last_layer.unwrap().shape()[0]),
-                        };
+                        *output_dim = Some(old_last_layer.unwrap().shape()[0]);
+                        *layers = Some(new_layers);
                         return Ok(());
                     }
                 };
@@ -1653,5 +1684,133 @@ mod tests {
                 ]
             ]
         );
+    }
+
+    #[test]
+    fn test_mse_loss() {
+        let mut loss_function = Loss::MeanSquareError;
+        assert_eq!(
+            loss_function
+                .calculate_value(
+                    &array![[0.0, 1.0], [1.0, 0.0]],
+                    &array![[1.0, 1.0], [0.0, 1.0]]
+                )
+                .unwrap(),
+            &array![[1.0, 0.0], [1.0, 1.0]]
+        );
+        assert_eq!(
+            loss_function
+                .calculate_derivative(
+                    &array![[0.0, 1.0], [1.0, 0.0]],
+                    &array![[1.0, 1.0], [0.0, 1.0]]
+                )
+                .unwrap(),
+            &array![[-1.0, 0.0], [1.0, -1.0]]
+        );
+        assert_eq!(
+            loss_function
+                .mean(
+                    &array![[0.0, 1.0], [1.0, 0.0]],
+                    &array![[1.0, 1.0], [0.0, 1.0]]
+                )
+                .unwrap(),
+            0.75
+        );
+        assert_eq!(
+            loss_function
+                .mean_axis(
+                    &array![[0.0, 1.0], [1.0, 0.0]],
+                    &array![[1.0, 1.0], [0.0, 1.0]],
+                    0
+                )
+                .unwrap(),
+            &array![1.0, 0.5]
+        )
+    }
+
+    #[test]
+    fn test_entropy_loss() {
+        let mut loss_function = Loss::Entropy;
+        assert_eq!(
+            loss_function
+                .calculate_value(
+                    &array![[0.0, 1.0], [1.0, 0.0]],
+                    &array![[1.0, 1.0], [0.0, 1.0]]
+                )
+                .is_err(),
+            true
+        );
+        assert_eq!(
+            loss_function
+                .calculate_derivative(
+                    &array![[0.0, 1.0], [1.0, 0.0]],
+                    &array![[1.0, 1.0], [0.0, 1.0]]
+                )
+                .is_err(),
+            true
+        );
+        assert_eq!(
+            loss_function
+                .mean(
+                    &array![[0.0, 1.0], [1.0, 0.0]],
+                    &array![[1.0, 1.0], [0.0, 1.0]]
+                )
+                .is_err(),
+            true
+        );
+        assert_eq!(
+            loss_function
+                .mean_axis(
+                    &array![[0.0, 1.0], [1.0, 0.0]],
+                    &array![[1.0, 1.0], [0.0, 1.0]],
+                    0
+                )
+                .is_err(),
+            true
+        );
+    }
+
+    #[test]
+    fn test_model_constructor() {
+        let mut model_constructor: ModelConstructor<'_, f32> = ModelConstructor::Sequential {
+            name: "model",
+            layers: None,
+            input_dim: 28 * 28,
+            output_dim: Some(10),
+        };
+        let _ = model_constructor.create();
+
+        let mut layer1: Layer<f32> = Layer::Dense {
+            activation: Activation::Sigmoid,
+            input_dim: 28 * 28,
+            output_dim: 100,
+            weights: None,
+            loss_values: None,
+            prev_layer: Box::new(None),
+            next_layer: Box::new(None),
+        };
+        let mut layer2: Layer<f32> = Layer::Dense {
+            activation: Activation::Sigmoid,
+            input_dim: 100,
+            output_dim: 100,
+            weights: None,
+            loss_values: None,
+            prev_layer: Box::new(None),
+            next_layer: Box::new(None),
+        };
+        let mut layer3: Layer<f32> = Layer::Dense {
+            activation: Activation::Sigmoid,
+            input_dim: 100,
+            output_dim: 10,
+            weights: None,
+            loss_values: None,
+            prev_layer: Box::new(None),
+            next_layer: Box::new(None),
+        };
+    
+        let _ = layer1.set_layer(&Some(layer2.to_owned()), "above".to_string(), false);
+        let _ = layer2.set_layer(&Some(layer1.to_owned()), "below".to_string(), false);
+        let _ = layer2.set_layer(&Some(layer2.to_owned()), "above".to_string(), false);
+        let _ = layer3.set_layer(&Some(layer2.to_owned()), "below".to_string(), false);
     }
 }
