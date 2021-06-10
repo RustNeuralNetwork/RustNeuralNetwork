@@ -71,7 +71,7 @@ To compile and run the binary executable MNIST classification example, you must 
 Then, inside the outermost MNIST directory, you can generate the csv format MNIST data by running the python script using:
 
 ```cmd
-python3 main.py
+python3 MNIST/main.py
 ```
 
 Finally, run the binary crate using:
