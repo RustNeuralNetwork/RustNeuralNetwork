@@ -79,7 +79,7 @@ pub enum ModelError<'a> {
 pub type Result<'a, T> = std::result::Result<T, ModelError<'a>>;
 
 /// Different types of activation functions supported by a NN Layer
-#[derive(Copy,Clone)]
+#[derive(Copy, Clone)]
 pub enum Activation<T: num_traits::float::Float> {
     /// Sigmoid Activation function
     Sigmoid,
@@ -300,7 +300,7 @@ impl<'a, T: num_traits::float::Float> ActivationInterface<'a, T> for Activation<
 }
 
 /// Different types of loss functions supported by a NN Model
-#[derive(Copy,Clone)]
+#[derive(Copy, Clone)]
 pub enum Loss {
     /// Mean Square Error loss function
     MeanSquareError,
@@ -657,13 +657,13 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
     fn set_weights(&'a mut self, new_weights: Array2<T>) -> Result<()> {
         match self {
             Layer::Dense {
-                activation:_,
+                activation: _,
                 input_dim,
                 output_dim,
                 weights,
-                loss_values:_,
-                prev_layer:_,
-                next_layer:_,
+                loss_values: _,
+                prev_layer: _,
+                next_layer: _,
             } => {
                 if new_weights.shape()[0] == *output_dim && new_weights.shape()[1] == *input_dim {
                     *weights = Some(new_weights);
@@ -747,13 +747,13 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
     fn set_losses(&'a mut self, new_losses: Array2<T>) -> Result<()> {
         match self {
             Layer::Dense {
-                activation:_,
-                input_dim:_,
+                activation: _,
+                input_dim: _,
                 output_dim,
-                weights:_,
+                weights: _,
                 loss_values,
-                prev_layer:_,
-                next_layer:_,
+                prev_layer: _,
+                next_layer: _,
             } => {
                 if new_losses.shape()[0] == *output_dim {
                     *loss_values = Some(new_losses);
@@ -793,11 +793,11 @@ impl<'a, T: 'static + num_traits::float::Float> ConfigureLayer<'a, T> for Layer<
     ) -> Result<()> {
         match self {
             Layer::Dense {
-                activation:_,
+                activation: _,
                 input_dim,
                 output_dim,
-                weights:_,
-                loss_values:_,
+                weights: _,
+                loss_values: _,
                 prev_layer,
                 next_layer,
             } => {
@@ -1014,7 +1014,7 @@ impl<'a, T: 'static + num_traits::float::Float> OptimizerInterface<'a, T> for Op
             match self {
                 Optimizer::StochasticGradientDescent {
                     learning_rate,
-                    momentum:_,
+                    momentum: _,
                 } => match key.as_str() {
                     "learning_rate" => {
                         *learning_rate = value;
@@ -1124,7 +1124,7 @@ impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for ModelConst
     fn add(&'a mut self, new_layer: &'a mut Layer<T>) -> Result<()> {
         match self {
             ModelConstructor::Sequential {
-                name:_,
+                name: _,
                 layers,
                 input_dim,
                 output_dim,
@@ -1173,9 +1173,9 @@ impl<'a, T: 'static + num_traits::float::Float> BuildModel<'a, T> for ModelConst
     fn pop(&'a mut self) -> Result<()> {
         match self {
             ModelConstructor::Sequential {
-                name:_,
+                name: _,
                 layers,
-                input_dim:_,
+                input_dim: _,
                 output_dim,
             } => {
                 if let Some(mut new_layers) = layers.take() {
@@ -1807,7 +1807,7 @@ mod tests {
             prev_layer: Box::new(None),
             next_layer: Box::new(None),
         };
-    
+
         let _ = layer1.set_layer(&Some(layer2.to_owned()), "above".to_string(), false);
         let _ = layer2.set_layer(&Some(layer1.to_owned()), "below".to_string(), false);
         let _ = layer2.set_layer(&Some(layer2.to_owned()), "above".to_string(), false);
