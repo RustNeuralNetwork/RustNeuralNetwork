@@ -46,10 +46,10 @@ fn main() {
     let test_path = get_args(1).unwrap();
     let train_path = get_args(2).unwrap();
     let (train_data, test_data) = read_csv(test_path, train_path).unwrap();
-    //let mut train_x = train_data.slice(s![.., 1..]);
-    //let mut train_target = train_data.slice(s![.., 0]);
-    //let mut test_x = test_data.slice(s![.., 1..]);
-    //let mut test_target = test_data.slice(s![.., 0]);
+    let mut train_x = train_data.slice(s![.., 1..]);
+    let mut train_target = train_data.slice(s![.., 0]);
+    let mut test_x = test_data.slice(s![.., 1..]);
+    let mut test_target = test_data.slice(s![.., 0]);
     let mut model_constructor: ModelConstructor<'_, f32> = ModelConstructor::Sequential {
         name: "model",
         layers: None,
@@ -107,9 +107,9 @@ fn main() {
         )
         .unwrap();
 
-    //model.fit(&train_x.to_owned(), &train_target.to_owned(), &50);
+    model.fit(&train_x.to_owned(), &train_target.to_owned(), &50);
 
-    //let mut predictions = model.predict(&test_x.to_owned()).unwrap();
+    let mut predictions = model.predict(&test_x.to_owned()).unwrap();
 
-    //assert_eq!(test_target, predictions);
+    assert_eq!(test_target, predictions);
 }
