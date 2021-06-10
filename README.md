@@ -32,13 +32,13 @@ The RustNeuralNetwork library allows you to forward propagate a single example t
 To compile library code, run:
 
 ```cmd
-cargo build
+cargo build --lib
 ```
 
 To run unit tests and doc tests in library, run:
 
 ```cmd
-cargo test
+cargo test --lib
 ```
 
 To compile and run the binary executable MNIST classification example, you must first download the MNIST dataset [here](http://yann.lecun.com/exdb/mnist/) and place the four extracted ubyte files into the MNIST directory inside a new file labelled MNIST. The structure of your directory should look like:
